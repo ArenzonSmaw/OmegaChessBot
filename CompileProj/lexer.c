@@ -1,64 +1,53 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "common.h"
+#include "lexer.h"
+
+#pragma warning(disable:4996)
+
+
+token_list node() {
+	return (token_list)malloc(sizeof(token_node));
+}
+
+void unknown_character(token_list lst, char value);
+void illegal_character(token_list lst, char value);
+
+void start_token(token_list lst, char value);
+
+void start_natural(token_list lst, char value);
+void start_rational(token_list lst, char value);
+void start_int(token_list lst, char value);
+void start_float(token_list lst, char value);
+void start_bool(token_list lst, char value);
+void start_char(token_list lst, char value);
+void start_string(token_list lst, char value);
+void start_ident(token_list lst, char value);
+
+void start_controlflow(token_list lst, char value);
+void add_controlflow(token_list lst, char value);
+
+void add_char(token_list lst, char value);
+void stay(token_list lst, char value) {}
+void skip(token_list lst, char value) {}
+
+void start_operator(token_list lst, char value);
+void add_operator(token_list lst, char value);
+void end_operator(token_list lst, char value) {}
+
+void add_token(token_list lst, char value) {}
+void add_current(token_list lst, char value);
 
 
 
-void unknown_character();
-void illegal_character();
-
-void start_natural();
-void start_rational();
-void start_int();
-void start_float();
-void start_bool();
-void start_char();
-void start_string();
-void start_ident();
-
-void start_controlflow();
-void add_controlflow();
-
-void stay();
-
-void start_operator();
-void add_operator();
-void end_operator();
-
-void add_token();
-void add_current();
-
-
-typedef enum INPUT {
-	UNKNOWN,
-	WHITESPACE,
-	CONTROLFLOW,
-	SQUOTE, DQUOTE,
-	DIGIT,
-	LETTER,
-	A, B, C, D, E, F, G, H, I, K, L, N, O, P, R, S, T, U, V, X,
-	OPERATOR,
-	DIVIDE, MINUS, DOT,
-	PRINTABLE
-} INPUT;
-
-typedef enum TYPES {
-	INT,
-	CHAR,
-	FLOAT,
-	STRING,
-	NATURAL,
-	RATIONAL,
-	BOOL,
-	IDENTIFIER
-} TYPES;
+int CHAR_CLASS[128] = { PRINTABLE };
+int GOTO[106][30] = { 105 };
+void (*ACTION[106][30])(token_list, char) = { illegal_character };
 
 void init_tables()
 {
 	int ch, st;
-	int CHAR_CLASS[128] = { PRINTABLE };
-
-	int GOTO[106][30] = { 105 };
-	void* ACTION[105][30];
 
 	//CHAR CLASS TBL
 	// 
@@ -118,38 +107,60 @@ void init_tables()
 	for (ch = '\''; ch <= ')'; ch++)
 		CHAR_CLASS[ch] = CONTROLFLOW;
 
-	//GOTO TBL
+	//GOTO + ACTION TBL
 	for (st = 0; st < 106; st++)
 	{
 		GOTO[st][WHITESPACE] = 0;
+		ACTION[st][WHITESPACE] = add_token;
+
 		GOTO[st][CONTROLFLOW] = 0;
+		ACTION[st][CONTROLFLOW] = add_controlflow;
 
 		for (ch = OPERATOR; ch < DOT; ch++)
+		{
 			GOTO[st][ch] = 4;
+			ACTION[st][ch] = add_operator;
+		}
 	}
 
 	//default state
 	GOTO[0][WHITESPACE] = 0;
+	ACTION[0][WHITESPACE] = skip;
 	GOTO[0][DIGIT] = 1;
-	GOTO[0][DOT] = 2;
-	GOTO[0][MINUS] = 4;
-	GOTO[0][DIVIDE] = 4;
+	ACTION[0][DIGIT] = start_natural;
+
 	//(strings and characters)
 	GOTO[0][SQUOTE] = 104;
-	for (ch = DIGIT; ch <= X; ch++)
+	ACTION[0][SQUOTE] = start_char;
+	for (ch = DIGIT; ch <= X; ch++) 
+	{
 		GOTO[104][ch] = 105;
+		ACTION[104][ch] = illegal_character;
+	}
 	GOTO[104][PRINTABLE] = 105;
+	ACTION[104][PRINTABLE] = illegal_character;
 	GOTO[104][SQUOTE] = 0;
+	ACTION[104][SQUOTE] = add_char;
 	GOTO[105][SQUOTE] = 0;
-	GOTO[0][DQUOTE] = 103;	
+	ACTION[105][SQUOTE] = add_char;
+	GOTO[0][DQUOTE] = 103;
+	ACTION[0][DQUOTE] = start_string;
 	GOTO[103][DQUOTE] = 0;
+	ACTION[103][DQUOTE] = add_char;
 	for (ch = DIGIT; ch <= X; ch++)
+	{
 		GOTO[103][ch] = 103;
+		ACTION[103][ch] = add_char;
+	}
 	GOTO[103][PRINTABLE] = 103;
+	ACTION[103][PRINTABLE] = add_char;
 
 	//redirection to identifier
 	for (ch = LETTER; ch <= X; ch++)
+	{
 		GOTO[0][ch] = 5;
+		ACTION[0][ch] = start_ident;
+	}
 
 	//redirection to keyword states
 	GOTO[0][B] = 6;
@@ -168,39 +179,62 @@ void init_tables()
 
 	//numeral state
 	GOTO[1][DIGIT] = 1;
+	ACTION[1][DIGIT] = add_digit;
 	GOTO[1][DOT] = 2;
 	GOTO[1][MINUS] = 4;
 	GOTO[1][DIVIDE] = 3;
+	for (ch = DIVIDE; ch <= DOT; ch++)
+	{
+		ACTION[1][ch] = add_operator;
+	}
 
 	//'dot' token
 	GOTO[2][DIGIT] = 1;
+	ACTION[2][DIGIT] = add_char;
 	GOTO[2][OPERATOR] = 4;
+	ACTION[2][OPERATOR] = start_operator;
 
 	//'division' token
 	GOTO[3][DIGIT] = 1;
+	ACTION[3][DIGIT] = start_natural;
 	GOTO[3][WHITESPACE] = 105;
 
 	//operators state
 	GOTO[4][WHITESPACE] = 4;
-	for (ch = OPERATOR; ch <= DOT; ch++)
+	ACTION[4][WHITESPACE] = skip;
+	for (ch = OPERATOR; ch <= DOT; ch++) 
+	{
 		GOTO[4][ch] = 4;
+		ACTION[4][ch] = add_operator;
+	}
 	GOTO[4][DIGIT] = 1;
+	ACTION[4][DIGIT] = start_natural;
 	GOTO[4][SQUOTE] = 104;
+	ACTION[4][SQUOTE] = start_char;
 	GOTO[4][DQUOTE] = 103;
+	ACTION[4][DQUOTE] = start_string;
 
 	for (ch = LETTER; ch <= X; ch++)
 		GOTO[4][ch] = 5;
 
 	//identifiers
 	for (ch = DIGIT; ch <= X; ch++)
+	{
 		GOTO[5][ch] = 5;
+		ACTION[5][ch] = stay;
+	}
 	GOTO[5][PRINTABLE] = 5;
+	ACTION[5][PRINTABLE] = stay;
 
 	for (st = 6; st <= 101; st++)
 	{ 
 		for (ch = DIGIT; ch <= X; ch++)
+		{
 			GOTO[st][ch] = 5;
+			ACTION[st][ch] = add_char;
+		}
 		GOTO[st][PRINTABLE] = 5;
+		GOTO[st][PRINTABLE] = add_char;
 	}
 
 	// keywords
@@ -314,10 +348,112 @@ void init_tables()
 
 	//error handling - panic mode recovery
 	for (ch = UNKNOWN; ch <= PRINTABLE; ch++)
+	{
 		GOTO[105][ch] = 105;
+		ACTION[105][ch] = add_char;
+	}
 	for (ch = CONTROLFLOW; ch <= DQUOTE; ch++)
+	{
 		GOTO[105][ch] = 0;
+		ACTION[105][ch] = add_token;
+	}
+}
 
-	//ACTION TBL
+void start_token(token_list lst, char ch)
+{
+	token_list token = node();
+	strcpy(token->info.str_val, "\0");
+	token->next = lst->next;
+	lst->next = token;
+	lst = token;
+}
+void start_natural(token_list lst, char value)
+{
+	token_list token = node();
+	token->info.num_val = value - '0';
+	token->type = NATURAL;
+	token->next = lst->next;
+	lst->next = token;
+	lst = token;
+}
+void add_digit(token_list lst, char value)
+{
+	lst->info.num_val *= 10;
+	lst->info.num_val += value - '0';
+}
+void start_bool(token_list lst, char value)
+{
+	add_char(lst, value);
+	lst->type = BOOL;
+}
+void start_char(token_list lst, char value)
+{
+	start_token(lst, value);
+	add_char(lst, value);
+	lst->type = CHAR;
+}
+void start_string(token_list lst, char value)
+{
+	start_token(lst, value);
+	add_char(lst, value);
+	lst->type = STRING;
+}
+void start_ident(token_list lst, char value)
+{
+	start_token(lst, value);
+	add_char(lst, value);
+	lst->type = IDENTIFIER;
+}
 
+void add_controlflow(token_list lst, char value)
+{
+	start_token(lst, value);
+	add_char(lst, value);
+	lst->type = CONTROLFLOW;
+}
+
+void add_char(token_list lst, char value)
+{
+	strcat(lst->info.str_val, value + '\0');
+}
+
+void start_operator(token_list lst, char value)
+{
+	start_token(lst, value);
+	add_char(lst, value);
+	lst->type = OPERATOR;
+}
+void add_operator(token_list lst, char value)
+{
+	start_operator(lst, value);
+}
+
+void unknown_character(token_list lst, char value)
+{
+	printf("unknown character %c", value);
+}
+void illegal_character(token_list lst, char value)
+{
+	printf("illegal character %c", value);
+}
+
+token_list tokenize(char text[])
+{
+	char ch = *text;
+	INPUT ch_class;
+	int state = 0;
+	token_list lst = (token_list)malloc(sizeof(token_node));
+	void (*action)(token_list, char);
+
+	while (ch != '\0')
+	{
+		ch_class = CHAR_CLASS[ch];
+
+		action = ACTION[state][ch_class];
+		state = GOTO[state][ch_class];
+
+		action(lst, ch);
+	}
+
+	return lst;
 }
