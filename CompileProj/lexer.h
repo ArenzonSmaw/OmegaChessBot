@@ -2,6 +2,8 @@
 #define LEXER_H
 
 #include <stdlib.h>
+#include "common.h"
+#include "error.h"
 
 typedef enum INPUT {
 	UNKNOWN,
@@ -34,17 +36,6 @@ typedef enum TYPES {
 	DECLARE
 } TYPES;
 
-typedef union {
-	string str_val;
-	int num_val;
-	bool bool_val;
-} data;
-typedef struct node {
-	data info;
-	TYPES type;
-	struct node* next;
-} token_node, *token_list;
-
-token_list tokenize(char[]);
+token** tokenize(lexer *lxr);
 
 #endif

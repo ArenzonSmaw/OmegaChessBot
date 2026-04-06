@@ -7,7 +7,7 @@
 int main() {
 
 	token_list lst;
-	lst = tokenize("declare mispar: int = 57;\n declare str:string = \"blah blah\";");
+	lst = tokenize("declare mispar: int = 57b;\n declare str:string = \"blah blah\";");
 	//lst = tokenize("\n \'t\' return");
 	token_list temp;
 	char types[15][20] = { "HEADER", "INT", "CONTROLFLOW", "CHAR", "FLOAT", "OPERATOR", "STRING", "NATURAL", "RATIONAL", "BOOL", "CONDITIONAL", "IDENTIFIER", "VARTYPE", "ERROR_HANDLER", "DECLARE" };

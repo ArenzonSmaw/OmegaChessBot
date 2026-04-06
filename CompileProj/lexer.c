@@ -11,52 +11,42 @@
 #define NUM_OF_CHARS 128
 
 
-token_list node() {
-	return (token_list)malloc(sizeof(token_node));
-}
+void start_token(lexer* lxr);
+void end_token(lexer* lxr);
 
-void unknown_character(token_list *lst, char value);
-void illegal_character(token_list *lst, char value);
+void conv_rational(lexer* lxr);
+void start_integer(lexer* lxr);
+void conv_integer(lexer* lxr);
+void end_integer(lexer* lxr);
+void conv_float(lexer* lxr);
+void end_float(lexer* lxr);
+void conv_bool(lexer* lxr);
+void start_char(lexer* lxr);
+void start_string(lexer* lxr);
+void conv_ident(lexer* lxr);
 
-void start_token(token_list *lst, char value);
+void start_controlflow(lexer* lxr);
+void add_controlflow(lexer* lxr);
 
-void start_natural(token_list *lst, char value);
-void start_rational(token_list* lst, char value) {}
-void start_int(token_list* lst, char value) {}
-void start_float(token_list* lst, char value) {}
-void start_bool(token_list *lst, char value);
-void start_char(token_list *lst, char value);
-void start_string(token_list *lst, char value);
-void start_ident(token_list *lst, char value);
+void add_char(lexer* lxr);
+void ignore(lexer* lxr);
 
-void start_controlflow(token_list* lst, char value);
-void add_controlflow(token_list *lst, char value);
+void start_operator(lexer* lxr);
+void add_operator(lexer* lxr);
 
-void add_char(token_list *lst, char value);
-void add_digit(token_list *lst, char value);
-void stay(token_list* lst, char value);
-void skip(token_list *lst, char value) {}
-
-void start_operator(token_list *lst, char value);
-void add_operator(token_list *lst, char value);
-void end_operator(token_list *lst, char value) {}
-
-void start_vartype(token_list* lst, char value);
-void start_errorhandler(token_list* lst, char value);
-void start_declare(token_list* lst, char value);
-void start_conditional(token_list* lst, char value);
-
-void add_token(token_list *lst, char value) {}
-void add_current(token_list* lst, char value) {}
+void conv_vartype(lexer* lxr);
+void conv_errorhandler(lexer* lxr);
+void conv_declare(lexer* lxr);
+void conv_conditional(lexer* lxr);
 
 
 static int CHAR_CLASS[NUM_OF_CHARS] = { PRINTABLE };
 static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { 105 };
-static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(token_list*, char) = { illegal_character };
+static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*) = { illegal_character };
 
-void init_tables()
+static void init_tables() // NEEDS UPDATING
 {
-	int ch, st;
+	int ch, st; //character, state
 
 	//CHAR CLASS TBL
 	// 
@@ -64,8 +54,7 @@ void init_tables()
 	for (ch = 0; ch < 32; ch++)
 		CHAR_CLASS[ch] = UNKNOWN;
 	CHAR_CLASS[127] = UNKNOWN;
-
-	//tabbing characters
+	//whitespace characters
 	for (ch = 9; ch <= 13; ch++)
 		CHAR_CLASS[ch] = WHITESPACE;
 	CHAR_CLASS[32] = WHITESPACE;
@@ -398,164 +387,230 @@ void init_tables()
 		GOTO[105][ch] = 0;
 		ACTION[105][ch] = add_token;
 	}
+} 
+
+void start_token(lexer* lxr)
+{
+	//Starts new token in lxr->data with lxr->input[index] 
+	
+	token tkn;
+	int i;
+	if (lxr->count == lxr->size)
+	{
+		realloc(lxr->data, lxr->size * 2);
+		lxr->size *= 2;
+
+		if (!lxr->data) memory_error();
+		for (i = lxr->count; i < lxr->size; i++)
+			lxr->data[i].lexeme = NULL;
+	}
+
+	tkn = lxr->data[lxr->count];
+	tkn.type = IDENTIFIER;
+	strcat(tkn.lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
+}
+void start_integer(lexer *lxr)
+{
+	//Starts new token for integer type
+	start_token(lxr);
+	lxr->data[lxr->count].type = INT;
+}
+void add_char(lexer* lxr)
+{
+	//adds char in lxr->input[index] to current token
+	token *tkn = &(lxr->data[lxr->count]);
+	strcpy(tkn->lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
 }
 
-void start_token(token_list *lst, char ch)
+void conv_integer(lexer* lxr)
 {
-	token_list token = node();
-	strcpy(token->info.str_val, "\0");
-	if (*lst != NULL)
-	{
-		token->next = (*lst)->next;
-		
-		(*lst)->next = token;
-		*lst = token;
-	}
-	else 
-	{
-		token->next = lst;
-		*lst = token;
-	}
+	//convert existing token to integer type ie: "-123" from operator to int
+	add_char(lxr);
+	lxr->data[lxr->count].type = INT;
 }
-void start_natural(token_list *lst, char value)
+void end_integer(lexer* lxr)
 {
-	token_list token = node();
-	token->info.num_val = value - '0';
-	token->type = NATURAL;
-	if (*lst != NULL)
+	//finishes handling current token and parsing lexeme into integer value
+	token* temp = &(lxr->data[lxr->count]);
+	lxr->index++;
+	temp->value = strtod(temp->lexeme, NULL);
+	lxr->count++;
+}
+void conv_float(lexer* lxr)
+{
+	//converts current token type to float
+	add_char(lxr);
+	lxr->data[lxr->count].type = FLOAT;
+}
+void end_float(lexer* lxr)
+{
+	//finishes handling float token
+	token* tkn = &(lxr->data[lxr->count]);
+	tkn->value = strtod(tkn->lexeme, NULL);
+}
+void conv_rational(lexer* lxr) //TODO 
+{
+	//converts existing token into rational type
+
+}
+
+void conv_bool(lexer* lxr)
+{
+	//converts existing token into bool type;
+	add_char(lxr);
+	lxr->data[lxr->count].type = BOOL;
+}
+void start_char(lexer *lxr)
+{
+	//starts new token of char type
+	start_token(lxr);
+	lxr->data[lxr->count].type = CHAR;
+}
+void end_char(lexer* lxr)
+{
+	//called when second ' detected - end char token
+	add_char(lxr);
+	lxr->count++;
+}
+void start_string(lexer *lxr)
+{
+	//starts new token of string type
+	start_token(lxr);
+	lxr->data[lxr->count].type = STRING;
+}
+void end_string(lexer* lxr)
+{
+	//called when second " detected, end string
+	add_char(lxr);
+	lxr->count++;
+}
+void conv_ident(lexer *lxr)
+{
+	//changes token type to identifier
+	add_char(lxr);
+	lxr->data[lxr->count].type = IDENTIFIER;
+}
+
+void add_controlflow(lexer *lxr)
+{
+	//adds controlflow token with checking if last token was handeled fully.
+	if (lxr->data[lxr->count].lexeme != NULL)
+		end_token(lxr);
+	start_controlflow(lxr);
+}
+void start_controlflow(lexer *lxr)
+{
+	//adds controlflow token assuming last token was handled fully.
+	start_token(lxr);
+	lxr->data[lxr->count].type = CONTROLFLOW;
+	lxr->count++;
+}
+
+void start_operator(lexer *lxr)
+{
+	//starts operator token and checks for dual character operators ie ++ += /= 
+	start_token(lxr);
+	lxr->data[lxr->count].type = OPERATOR;
+	if (CHAR_CLASS[lxr->input[lxr->index]] == OPERATOR)
 	{
-		token->next = (*lst)->next;
-		(*lst)->next = token;
-		*lst = token;
+		lxr->index++;
+		add_char(lxr);
 	}
 	else
 	{
-		token->next = *lst;
-		*lst = token;
+		lxr->count++;
 	}
 }
-//void start_int(token_list* lst, char value)
-//{
-//	start_natural(lst, value);
-//	(*lst)->type = INT;
-//}
-void add_digit(token_list *lst, char value)
+void add_operator(lexer *lxr)
 {
-	(*lst)->info.num_val *= 10;
-	(*lst)->info.num_val += value - '0';
-}
-void start_bool(token_list *lst, char value)
-{
-	add_char(lst, value);
-	(*lst)->type = BOOL;
-}
-void start_char(token_list *lst, char value)
-{
-	start_token(lst, value);
-	add_char(lst, value);
-	(*lst)->type = CHAR;
-}
-void start_string(token_list *lst, char value)
-{
-	start_token(lst, value);
-	add_char(lst, value);
-	(*lst)->type = STRING;
-}
-void start_ident(token_list *lst, char value)
-{
-	start_token(lst, value);
-	add_char(lst, value);
-	(*lst)->type = IDENTIFIER;
+	//starts new operator token assuming single character operator;
+	start_operator(lxr);
+	lxr->data[lxr->count].type = OPERATOR;
+	lxr->count++;
 }
 
-void add_controlflow(token_list *lst, char value)
+void conv_vartype(lexer *lxr)
 {
-	start_token(lst, value);
-	add_char(lst, value);
-	(*lst)->type = CONTROLFLOW;
+	//convert to variable name type token ie int, float, string
+	add_char(lxr);
+	lxr->data[lxr->count].type = VARTYPE;
 }
-void start_controlflow(token_list* lst, char value)
+void conv_errorhandler(lexer *lxr)
 {
-	add_controlflow(lst, value);
+	//converts to error handling type token ie exception
+	add_char(lxr);
+	lxr->data[lxr->count].type = ERROR_HANDLER;
 }
-
-void add_char(token_list *lst, char value)
+void conv_declare(lexer *lxr)
 {
-	strcat((*lst)->info.str_val, (char[2]){value, '\0'});
+	//converts to declaration token
+	add_char(lxr);
+	lxr->data[lxr->count].type = DECLARE;
 }
-
-void start_operator(token_list *lst, char value)
+void conv_conditional(lexer *lxr)
 {
-	start_token(lst, value);
-	add_char(lst, value);
-	(*lst)->type = OPERATOR;
-}
-void add_operator(token_list *lst, char value)
-{
-	start_operator(lst, value);
+	//converts to conditional type token ie if else
+	add_char(lxr);
+	lxr->data[lxr->count].type = CONDITIONAL;
 }
 
-void start_vartype(token_list* lst, char value)
+void ignore(lexer *lxr)
 {
-	add_char(lst, value);
-	(*lst)->type = VARTYPE;
+	//ignores current character
+	lxr->index++;
 }
-void start_errorhandler(token_list* lst, char value)
+void end_token(lexer* lxr)
 {
-	add_char(lst, value);
-	(*lst)->type = ERROR_HANDLER;
-}
-void start_declare(token_list* lst, char value)
-{
-	add_char(lst, value);
-	(*lst)->type = DECLARE;
-}
-void start_conditional(token_list* lst, char value)
-{
-	add_char(lst, value);
-	(*lst)->type = CONDITIONAL;
+	//ends token with checking for ending method
+	static void (*method)(lexer*);
+	static void(*END_METHOD[(type)DECLARE + 1])(lexer*) =
+	{	
+		/*INT*/		end_integer, 
+		/*CF*/		ignore, 
+		/*CHAR*/	expected_error, 
+		/*FLOAT*/	end_float, 
+		/*OP*/		ignore, 
+		/*STR*/		expected_error, 
+		/*NAT*/		ignore, 
+		/*RAT*/		ignore,
+		/*BOOL*/	ignore, 
+		/*COND*/	ignore, 
+		/*IDENT*/	ignore, 
+		/*VARTYPE*/	ignore, 
+		/*ERR*/		ignore, 
+		/*DECLARE*/	ignore
+	};
+	method = END_METHOD[lxr->data[lxr->count].type];
+	if (method == ignore)
+		lxr->count++;
+	else {
+		method(lxr);
+	}
 }
 
-void stay(token_list* lst, char value)
-{
-	add_char(lst, value);
-}
 
-void unknown_character(token_list *lst, char value)
+#define input (lxr->input)
+#define index (lxr->index)
+void tokenize(lexer *lxr)
 {
-	printf("unknown character %c", value);
-}
-void illegal_character(token_list *lst, char value)
-{
-	printf("illegal character %c", value);
-}
-
-token_list tokenize(char text[])
-{
-	char ch = *text;
 	INPUT ch_class;
 	int state = 0;
-	token_list list = node();
-	token_list pos;
-	void (*action)(token_list*, char);
+	void (*action)(lexer*);
+
+	lxr->data = malloc(2 * sizeof(token));
+	lxr->size = 2;
+	lxr->count = 0;
 
 	init_tables(CHAR_CLASS, GOTO, ACTION);
 
-	list->next = NULL;
-	list->type = HEADER;
-	pos = list;
 
-	while (ch != '\0')
+	while (input[index] != '\0')
 	{
-		ch_class = CHAR_CLASS[ch];
+		ch_class = CHAR_CLASS[input[index]];
 
 		action = ACTION[state][ch_class];
 		state = GOTO[state][ch_class];
 
-		action(&pos, ch);
-
-		ch = *(++text);
+		action(lxr);
 	}
-
-	return list;
 }
