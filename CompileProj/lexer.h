@@ -11,31 +11,14 @@ typedef enum INPUT {
 	CF,
 	SQUOTE, DQUOTE,
 	OP,
-	MINUS, DIVIDE, DOT,
+	MINUS, DIVIDE, DOT, BACKSLASH,
 	DIGIT,
 	LETTER,
 	A, B, C, D, E, F, G, H, I, K, L, N, O, P, R, S, T, U, V, X,
 	PRINTABLE
 } INPUT;
 
-typedef enum TYPES {
-	HEADER,
-	INT,
-	CONTROLFLOW,
-	CHAR,
-	FLOAT,
-	OPERATOR,
-	STRING,
-	NATURAL,
-	RATIONAL,
-	BOOL,
-	CONDITIONAL,
-	IDENTIFIER,
-	VARTYPE,
-	ERROR_HANDLER,
-	DECLARE
-} TYPES;
 
-token** tokenize(lexer *lxr);
+void tokenize(lexer *lxr);
 
 #endif

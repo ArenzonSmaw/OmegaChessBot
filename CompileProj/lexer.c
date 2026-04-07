@@ -22,15 +22,19 @@ void conv_float(lexer* lxr);
 void end_float(lexer* lxr);
 void conv_bool(lexer* lxr);
 void start_char(lexer* lxr);
+void end_char(lexer* lxr);
 void start_string(lexer* lxr);
+void end_string(lexer* lxr);
 void conv_ident(lexer* lxr);
 
 void start_controlflow(lexer* lxr);
 void add_controlflow(lexer* lxr);
+void conv_controlflow(lexer* lxr);
 
 void add_char(lexer* lxr);
 void ignore(lexer* lxr);
 
+void end_token_start_operator(lexer*);
 void start_operator(lexer* lxr);
 void add_operator(lexer* lxr);
 
@@ -41,7 +45,7 @@ void conv_conditional(lexer* lxr);
 
 
 static int CHAR_CLASS[NUM_OF_CHARS] = { PRINTABLE };
-static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { 105 };
+static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { 107 };
 static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*) = { illegal_character };
 
 static void init_tables() // NEEDS UPDATING
@@ -109,28 +113,32 @@ static void init_tables() // NEEDS UPDATING
 	CHAR_CLASS['\''] = SQUOTE;
 	CHAR_CLASS['\"'] = DQUOTE;
 
+	//backslash
+	CHAR_CLASS['\\'] = BACKSLASH;
+
 	//GOTO + ACTION TBL
 	for (st = 0; st < 106; st++)
 	{
 		GOTO[st][WHITESPACE] = 0;
-		ACTION[st][WHITESPACE] = skip;
+		ACTION[st][WHITESPACE] = end_token;
 
 		GOTO[st][CF] = 0;
 		ACTION[st][CF] = add_controlflow;
 
 		GOTO[st][OP] = 4;
-		ACTION[st][OP] = add_operator;
+		ACTION[st][OP] = start_operator;
 		
 	}
 	//floating point
-	/*GOTO[0][DOT] = 2; for future development
-	ACTION[0][DOT] = start_float;*/
+	GOTO[0][DOT] = 2; 
+	ACTION[0][DOT] = start_operator;
+	GOTO[2][DIGIT] = conv_float;
 
 	//default state
 	GOTO[0][WHITESPACE] = 0;
-	ACTION[0][WHITESPACE] = skip;
+	ACTION[0][WHITESPACE] = ignore;
 	GOTO[0][DIGIT] = 1;
-	ACTION[0][DIGIT] = start_natural;
+	ACTION[0][DIGIT] = start_integer;
 
 	//(strings and characters)
 	GOTO[0][SQUOTE] = 104;
@@ -143,13 +151,13 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[104][PRINTABLE] = 105;
 	ACTION[104][PRINTABLE] = illegal_character;
 	GOTO[104][SQUOTE] = 0;
-	ACTION[104][SQUOTE] = add_char;
+	ACTION[104][SQUOTE] = end_char;
 	GOTO[105][SQUOTE] = 0;
-	ACTION[105][SQUOTE] = add_char;
+	ACTION[105][SQUOTE] = end_char;
 	GOTO[0][DQUOTE] = 103;
 	ACTION[0][DQUOTE] = start_string;
 	GOTO[103][DQUOTE] = 0;
-	ACTION[103][DQUOTE] = add_char;
+	ACTION[103][DQUOTE] = end_string;
 	for (ch = DIGIT; ch <= X; ch++)
 	{
 		GOTO[103][ch] = 103;
@@ -164,7 +172,7 @@ static void init_tables() // NEEDS UPDATING
 	for (ch = LETTER; ch <= X; ch++)
 	{
 		GOTO[0][ch] = 5;
-		ACTION[0][ch] = start_ident;
+		ACTION[0][ch] = start_token;
 	}
 
 	//redirection to keyword states
@@ -184,22 +192,30 @@ static void init_tables() // NEEDS UPDATING
 
 	//numeral state
 	GOTO[1][DIGIT] = 1;
-	ACTION[1][DIGIT] = add_digit;
+	ACTION[1][DIGIT] = add_char;
 	
-	/*GOTO[1][DOT] = 2; for future development
-	ACTION[1][DOT] = to_float;
+	GOTO[1][DOT] = 2;
+	ACTION[1][DOT] = conv_float;
 
-	GOTO[1][DIVIDE] = 2;
-	ACTION[1][DIVIDE] = to_rational;*/
+	GOTO[1][DIVIDE] = 3;
+	ACTION[1][DIVIDE] = end_token_start_operator;
+	GOTO[3][DIGIT] = 1;
+	ACTION[3][DIGIT] = conv_rational;
+
+	GOTO[1][WHITESPACE] = 0;
+	ACTION[1][WHITESPACE] = end_integer;
+	GOTO[1][CF] = 0;
+	ACTION[1][CF] = add_controlflow;
+
 
 
 	//operators state
 	GOTO[4][WHITESPACE] = 0;
-	ACTION[4][WHITESPACE] = skip;
+	ACTION[4][WHITESPACE] = ignore;
 	GOTO[4][OPERATOR] = 4;
 	ACTION[4][OPERATOR] = add_operator;
 	GOTO[4][DIGIT] = 1;
-	ACTION[4][DIGIT] = start_natural;
+	ACTION[4][DIGIT] = start_integer;
 	GOTO[4][SQUOTE] = 104;
 	ACTION[4][SQUOTE] = start_char;
 	GOTO[4][DQUOTE] = 103;
@@ -207,7 +223,7 @@ static void init_tables() // NEEDS UPDATING
 	for (ch = LETTER; ch <= X; ch++)
 	{
 		GOTO[4][ch] = 5;
-		ACTION[4][ch] = start_ident;
+		ACTION[4][ch] = start_token;
 	}
 	GOTO[4][B] = 6;
 	GOTO[4][C] = 14;
@@ -228,10 +244,10 @@ static void init_tables() // NEEDS UPDATING
 	for (ch = DIGIT; ch <= X; ch++)
 	{
 		GOTO[5][ch] = 5;
-		ACTION[5][ch] = stay;
+		ACTION[5][ch] = add_char;
 	}
 	GOTO[5][PRINTABLE] = 5;
-	ACTION[5][PRINTABLE] = stay;
+	ACTION[5][PRINTABLE] = add_char;
 
 	for (st = 6; st <= 101; st++)
 	{ 
@@ -244,31 +260,35 @@ static void init_tables() // NEEDS UPDATING
 		ACTION[st][PRINTABLE] = add_char;
 
 		GOTO[st][WHITESPACE] = 0;
-		ACTION[st][WHITESPACE] = skip;
+		ACTION[st][WHITESPACE] = end_token;
 	}
 
 	// keywords
 	GOTO[6][O] = 7; //b|ool
 	GOTO[7][O] = 8; //bo|ol
 	GOTO[8][L] = 9; //boo|l
-	ACTION[8][L] = start_vartype;
+	ACTION[8][L] = conv_vartype; 
+	ACTION[9][PRINTABLE] = conv_ident;
 
 	GOTO[6][R] = 10; //b|reak
 	GOTO[10][E] = 11; //br|eak
 	GOTO[11][A] = 12; //bre|ak
 	GOTO[12][K] = 13; //brea|k
-	ACTION[12][K] = start_controlflow;
+	ACTION[12][K] = conv_controlflow;
+	ACTION[13][PRINTABLE] = conv_ident;
 
 	GOTO[14][H] = 15; //c|har , c|heck
 	
 	GOTO[15][A] = 19; //ch|ar
 	GOTO[19][R] = 20; //cha|r
-	ACTION[19][R] = start_vartype;
+	ACTION[19][R] = conv_vartype;
+	ACTION[20][PRINTABLE] = conv_ident;
 
 	GOTO[15][E] = 16; //ch|eck
 	GOTO[16][C] = 17; //che|ck
 	GOTO[17][K] = 18; //chec|k
-	ACTION[17][K] = start_errorhandler;
+	ACTION[17][K] = conv_errorhandler;
+	ACTION[18][PRINTABLE] = conv_ident;
 
 	GOTO[21][E] = 22; //d|ecalre
 	GOTO[22][C] = 23; //de|clare
@@ -276,14 +296,16 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[24][A] = 25; //decl|are
 	GOTO[25][R] = 26; //decla|re
 	GOTO[26][E] = 27; //declar|e
-	ACTION[26][E] = start_declare;
+	ACTION[26][E] = conv_declare;
+	ACTION[27][PRINTABLE] = conv_ident;
 
 	GOTO[28][L] = 29; //e|lse
 	GOTO[28][X] = 32; //e|xception
 
 	GOTO[29][S] = 30; //el|se
 	GOTO[30][E] = 31; //els|e
-	ACTION[30][E] = start_conditional;
+	ACTION[30][E] = conv_conditional;
+	ACTION[31][PRINTABLE] = conv_ident;
 
 	GOTO[32][C] = 33; //ex|ception
 	GOTO[33][E] = 34; //exc|eption
@@ -292,30 +314,36 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[36][I] = 37; //except|ion
 	GOTO[37][O] = 38; //excepti|on
 	GOTO[38][N] = 39; //exceptio|n
-	ACTION[38][N] = start_errorhandler;
+	ACTION[38][N] = conv_errorhandler;
+	ACTION[39][PRINTABLE] = conv_ident;
 
 	GOTO[40][L] = 41; //f|loat
 	GOTO[41][O] = 42; //fl|oat
 	GOTO[42][A] = 43; //flo|at
 	GOTO[43][T] = 44; //floa|t
-	ACTION[43][T] = start_vartype;
+	ACTION[43][T] = conv_vartype;
+	ACTION[44][PRINTABLE] = conv_ident;
 
 	GOTO[45][F] = 46; //i|f
-	ACTION[45][F] = start_conditional;
+	ACTION[45][F] = conv_conditional;
+	ACTION[46][PRINTABLE] = conv_ident;
 
 	GOTO[45][N] = 47; //i|nt
 	GOTO[47][T] = 48; //in|t
-	ACTION[47][T] = start_vartype;
+	ACTION[47][T] = conv_vartype;
+	ACTION[48][PRINTABLE] = conv_ident;
 
 	GOTO[49][O] = 50; //l|ong, l|oop
 	
 	GOTO[50][O] = 53; //lo|op
 	GOTO[53][P] = 54; //loo|p
-	ACTION[53][P] = start_controlflow;
+	ACTION[53][P] = conv_controlflow;
+	ACTION[54][PRINTABLE] = conv_ident;
 
 	GOTO[50][N] = 51; //lo|ng
 	GOTO[51][G] = 52; //lon|g
-	ACTION[51][G] = start_vartype;
+	ACTION[51][G] = conv_vartype;
+	ACTION[52][PRINTABLE] = conv_ident;
 
 	GOTO[55][A] = 56; //n|atural
 	GOTO[56][T] = 57; //na|tural
@@ -323,12 +351,14 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[58][R] = 59; //natu|ral
 	GOTO[59][A] = 60; //natur|al
 	GOTO[60][L] = 61; //natura|l
-	ACTION[60][L] = start_vartype;
+	ACTION[60][L] = conv_vartype;
+	ACTION[61][PRINTABLE] = conv_ident;
 
 	GOTO[62][A] = 63; //p|ass
 	GOTO[63][S] = 64; //pa|ss
 	GOTO[64][S] = 65; //pas|s
-	ACTION[64][S] = start_controlflow;
+	ACTION[64][S] = conv_controlflow;
+	ACTION[65][PRINTABLE] = conv_ident;
 
 	GOTO[62][O] = 66; //p|ointer
 	GOTO[66][I] = 67; //po|inter
@@ -336,7 +366,8 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[68][T] = 69; //poin|ter
 	GOTO[69][E] = 70; //point|er
 	GOTO[70][R] = 71; //pointe|r
-	ACTION[70][R] = start_vartype;
+	ACTION[70][R] = conv_vartype;
+	ACTION[71][PRINTABLE] = conv_ident;
 
 	GOTO[72][A] = 73; //r|ational
 	GOTO[73][T] = 74; //ra|tional
@@ -345,36 +376,42 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[76][N] = 77; //ratio|nal
 	GOTO[77][A] = 78; //ration|al
 	GOTO[78][L] = 79; //rationa|l
-	ACTION[78][L] = start_vartype;
+	ACTION[78][L] = conv_vartype;
+	ACTION[79][PRINTABLE] = conv_ident;
 
 	GOTO[72][E] = 80; //r|eturn
 	GOTO[80][T] = 81; //re|turn
 	GOTO[81][U] = 82; //ret|urn
 	GOTO[82][R] = 83; //retu|rn
 	GOTO[83][N] = 84; //retur|n
-	ACTION[83][N] = start_controlflow;
+	ACTION[83][N] = conv_controlflow;
+	ACTION[84][PRINTABLE] = conv_ident;
 
 	GOTO[85][H] = 86; //s|hort
 	GOTO[86][O] = 87; //sh|ort
 	GOTO[87][R] = 88; //sho|rt
 	GOTO[88][T] = 89; //shor|t
-	ACTION[88][T] = start_vartype;
+	ACTION[88][T] = conv_vartype;
+	ACTION[89][PRINTABLE] = conv_ident;
 
 	GOTO[85][T] = 90; //s|tring
 	GOTO[90][R] = 91; //st|ring
 	GOTO[91][I] = 92; //str|ing
 	GOTO[92][N] = 93; //stri|ng
 	GOTO[93][G] = 94; //strin|g
-	ACTION[93][G] = start_vartype;
+	ACTION[93][G] = conv_vartype;
+	ACTION[94][PRINTABLE] = conv_ident;
 
 	GOTO[95][S] = 96; //u|se
 	GOTO[96][E] = 97; //us|e
-	ACTION[96][E] = start_declare;
+	ACTION[96][E] = conv_declare;
+	ACTION[97][PRINTABLE] = conv_ident;
 
 	GOTO[98][O] = 99;  //v|oid
 	GOTO[99][I] = 100; //vo|id
 	GOTO[100][D] = 101;//voi|d
-	ACTION[100][D] = start_vartype;
+	ACTION[100][D] = conv_vartype;
+	ACTION[101][PRINTABLE] = conv_ident;
 
 	//error handling - panic mode recovery
 	for (ch = UNKNOWN; ch <= PRINTABLE; ch++)
@@ -382,10 +419,10 @@ static void init_tables() // NEEDS UPDATING
 		GOTO[105][ch] = 105;
 		ACTION[105][ch] = add_char;
 	}
-	for (ch = CONTROLFLOW; ch <= DQUOTE; ch++)
+	for (ch = CF; ch <= DQUOTE; ch++)
 	{
 		GOTO[105][ch] = 0;
-		ACTION[105][ch] = add_token;
+		ACTION[105][ch] = end_token;
 	}
 } 
 
@@ -419,7 +456,7 @@ void add_char(lexer* lxr)
 {
 	//adds char in lxr->input[index] to current token
 	token *tkn = &(lxr->data[lxr->count]);
-	strcpy(tkn->lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
+	strcat(tkn->lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
 }
 
 void conv_integer(lexer* lxr)
@@ -450,8 +487,25 @@ void end_float(lexer* lxr)
 }
 void conv_rational(lexer* lxr) //TODO 
 {
-	//converts existing token into rational type
+	//converts existing token into rational type assuming
+	token* tkn;
+	lxr->count -= 1;
+	tkn = &(lxr->data[lxr->count]);
+	strcat(tkn->lexeme, (char[2]) { '/', '\0' });
+	add_char(lxr);
+	tkn->type = RATIONAL;
+}
+void end_rational(lexer* lxr)
+{
+	//finishes handling of rational type token - calculates the derivitive
+	double dvnd, dvsr; //dividend, divisor
+	char* end_ptr;
 
+	dvnd = strtod(lxr->data[lxr->count].lexeme, &end_ptr);
+	dvsr = strtod(end_ptr + 1, NULL);
+
+	lxr->data[lxr->count].value = dvnd / dvsr;
+	lxr->count++;
 }
 
 void conv_bool(lexer* lxr)
@@ -505,7 +559,19 @@ void start_controlflow(lexer *lxr)
 	lxr->data[lxr->count].type = CONTROLFLOW;
 	lxr->count++;
 }
+void conv_controlflow(lexer* lxr)
+{
+	// changes current token to controlflow type
+	add_char(lxr);
+	lxr->data[lxr->count].type = CONTROLFLOW;
+}
 
+void end_token_start_operator(lexer* lxr)
+{
+	//ends current token and starts new operator
+	end_token(lxr);
+	start_operator(lxr);
+}
 void start_operator(lexer *lxr)
 {
 	//starts operator token and checks for dual character operators ie ++ += /= 

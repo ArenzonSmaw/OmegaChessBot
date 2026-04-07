@@ -1,0 +1,9 @@
+declare x:int = 12;
+declare y:float = 5.47;
+
+if ((x * y) >= 50)
+{
+    return 1;
+}
+else
+    return 0;
