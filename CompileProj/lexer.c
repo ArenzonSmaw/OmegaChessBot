@@ -6,7 +6,7 @@
 
 #pragma warning(disable:4996)
 
-#define NUM_OF_STATES 106
+#define NUM_OF_STATES 109
 #define NUM_OF_INPUTS 32
 #define NUM_OF_CHARS 128
 
@@ -48,6 +48,11 @@ static int CHAR_CLASS[NUM_OF_CHARS] = { PRINTABLE };
 static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { 107 };
 static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*) = { illegal_character };
 
+void set_table(int state, INPUT input_char, int goto_state, void (*action)(lexer*))
+{
+	GOTO[state][input_char] = goto_state;
+	ACTION[state][input_char] = action;
+}
 static void init_tables() // NEEDS UPDATING
 {
 	int ch, st; //character, state
@@ -119,60 +124,43 @@ static void init_tables() // NEEDS UPDATING
 	//GOTO + ACTION TBL
 	for (st = 0; st < 106; st++)
 	{
-		GOTO[st][WHITESPACE] = 0;
-		ACTION[st][WHITESPACE] = end_token;
+		set_table(st, WHITESPACE, 0, end_token);
 
-		GOTO[st][CF] = 0;
-		ACTION[st][CF] = add_controlflow;
+		set_table(st, CF, 0, add_controlflow);
 
-		GOTO[st][OP] = 4;
-		ACTION[st][OP] = start_operator;
-		
+		set_table(st, OP, 4, end_token_start_operator);
 	}
 	//floating point
-	GOTO[0][DOT] = 2; 
-	ACTION[0][DOT] = start_operator;
-	GOTO[2][DIGIT] = conv_float;
+	set_table(0, DOT, 2, start_operator);
+	set_table(2, DIGIT, 1, conv_float);
 
-	//default state
-	GOTO[0][WHITESPACE] = 0;
-	ACTION[0][WHITESPACE] = ignore;
-	GOTO[0][DIGIT] = 1;
-	ACTION[0][DIGIT] = start_integer;
+	//default state]
+	set_table(0, WHITESPACE, 0, ignore);
+	set_table(0, DIGIT, 1, start_integer);
 
 	//(strings and characters)
-	GOTO[0][SQUOTE] = 104;
-	ACTION[0][SQUOTE] = start_char;
+	set_table(0, SQUOTE, 104, start_char);
 	for (ch = DIGIT; ch <= X; ch++) 
 	{
-		GOTO[104][ch] = 105;
-		ACTION[104][ch] = illegal_character;
+		set_table(104, ch, 105, illegal_character);
 	}
-	GOTO[104][PRINTABLE] = 105;
-	ACTION[104][PRINTABLE] = illegal_character;
-	GOTO[104][SQUOTE] = 0;
-	ACTION[104][SQUOTE] = end_char;
-	GOTO[105][SQUOTE] = 0;
-	ACTION[105][SQUOTE] = end_char;
-	GOTO[0][DQUOTE] = 103;
-	ACTION[0][DQUOTE] = start_string;
-	GOTO[103][DQUOTE] = 0;
-	ACTION[103][DQUOTE] = end_string;
+	set_table(104, PRINTABLE, 107, illegal_character); // ADD 107 STATE
+	set_table(104, SQUOTE, 0, end_char);
+	set_table(105, SQUOTE, 0, end_char);
+
+	set_table(0, DQUOTE, 103, start_string);
+	set_table(103, DQUOTE, 0, end_string);
 	for (ch = DIGIT; ch <= X; ch++)
 	{
-		GOTO[103][ch] = 103;
-		ACTION[103][ch] = add_char;
+		set_table(103, ch, 103, add_char);
 	}
-	GOTO[103][WHITESPACE] = 103;
-	ACTION[103][WHITESPACE] = add_char;
-	GOTO[103][PRINTABLE] = 103;
-	ACTION[103][PRINTABLE] = add_char;
+	set_table(103, WHITESPACE, 103, add_char);
+	set_table(103, PRINTABLE, 103, add_char);
 
 	//redirection to identifier
 	for (ch = LETTER; ch <= X; ch++)
 	{
-		GOTO[0][ch] = 5;
-		ACTION[0][ch] = start_token;
+		set_table(0, ch, 5, start_token);
 	}
 
 	//redirection to keyword states
@@ -191,39 +179,28 @@ static void init_tables() // NEEDS UPDATING
 	GOTO[0][V] = 98;
 
 	//numeral state
-	GOTO[1][DIGIT] = 1;
-	ACTION[1][DIGIT] = add_char;
+	set_table(1, DIGIT, 1, add_char);
 	
-	GOTO[1][DOT] = 2;
-	ACTION[1][DOT] = conv_float;
+	set_table(1, DOT, 2, conv_float);
 
-	GOTO[1][DIVIDE] = 3;
-	ACTION[1][DIVIDE] = end_token_start_operator;
-	GOTO[3][DIGIT] = 1;
-	ACTION[3][DIGIT] = conv_rational;
+	set_table(1, DIVIDE, 3, end_token_start_operator);
+	set_table(3, DIGIT, 108, conv_rational);//ADD 108 STATE!!!
 
-	GOTO[1][WHITESPACE] = 0;
-	ACTION[1][WHITESPACE] = end_integer;
-	GOTO[1][CF] = 0;
-	ACTION[1][CF] = add_controlflow;
+	set_table(1, WHITESPACE, 0, end_integer);
+	set_table(1, CF, 0, add_controlflow);
 
 
 
 	//operators state
-	GOTO[4][WHITESPACE] = 0;
-	ACTION[4][WHITESPACE] = ignore;
-	GOTO[4][OPERATOR] = 4;
-	ACTION[4][OPERATOR] = add_operator;
-	GOTO[4][DIGIT] = 1;
-	ACTION[4][DIGIT] = start_integer;
-	GOTO[4][SQUOTE] = 104;
-	ACTION[4][SQUOTE] = start_char;
-	GOTO[4][DQUOTE] = 103;
-	ACTION[4][DQUOTE] = start_string;
+	set_table(4, WHITESPACE, 0, ignore);
+	set_table(4, OP, 4, add_operator);
+	set_table(4, DIGIT, 1, start_integer);
+	set_table(4, SQUOTE, 104, start_char);
+	set_table(4, DQUOTE, 103, start_string);
+
 	for (ch = LETTER; ch <= X; ch++)
 	{
-		GOTO[4][ch] = 5;
-		ACTION[4][ch] = start_token;
+		set_table(4, ch, 5, start_token);
 	}
 	GOTO[4][B] = 6;
 	GOTO[4][C] = 14;
@@ -243,24 +220,18 @@ static void init_tables() // NEEDS UPDATING
 	//identifiers
 	for (ch = DIGIT; ch <= X; ch++)
 	{
-		GOTO[5][ch] = 5;
-		ACTION[5][ch] = add_char;
+		set_table(5, ch, 5, add_char);
 	}
-	GOTO[5][PRINTABLE] = 5;
-	ACTION[5][PRINTABLE] = add_char;
+	set_table(5, PRINTABLE, 5, add_char);
 
 	for (st = 6; st <= 101; st++)
 	{ 
 		for (ch = DIGIT; ch <= X; ch++)
 		{
-			GOTO[st][ch] = 5;
-			ACTION[st][ch] = add_char;
+			set_table(st, ch, 5, add_char);
 		}
-		GOTO[st][PRINTABLE] = 5;
-		ACTION[st][PRINTABLE] = add_char;
-
-		GOTO[st][WHITESPACE] = 0;
-		ACTION[st][WHITESPACE] = end_token;
+		set_table(st, PRINTABLE, 5, add_char);
+		set_table(st, WHITESPACE, 0, end_token);
 	}
 
 	// keywords
@@ -416,13 +387,11 @@ static void init_tables() // NEEDS UPDATING
 	//error handling - panic mode recovery
 	for (ch = UNKNOWN; ch <= PRINTABLE; ch++)
 	{
-		GOTO[105][ch] = 105;
-		ACTION[105][ch] = add_char;
+		set_table(107, ch, 107, add_char);
 	}
 	for (ch = CF; ch <= DQUOTE; ch++)
 	{
-		GOTO[105][ch] = 0;
-		ACTION[105][ch] = end_token;
+		set_table(107, ch, 0, end_token);
 	}
 } 
 
@@ -430,7 +399,7 @@ void start_token(lexer* lxr)
 {
 	//Starts new token in lxr->data with lxr->input[index] 
 	
-	token tkn;
+	token *tkn;
 	int i;
 	if (lxr->count == lxr->size)
 	{
@@ -439,12 +408,14 @@ void start_token(lexer* lxr)
 
 		if (!lxr->data) memory_error();
 		for (i = lxr->count; i < lxr->size; i++)
-			lxr->data[i].lexeme = NULL;
+		{
+			strcpy(lxr->data[i].lexeme, "\0");
+		}
 	}
 
-	tkn = lxr->data[lxr->count];
-	tkn.type = IDENTIFIER;
-	strcat(tkn.lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
+	tkn = &(lxr->data[lxr->count]);
+	tkn->type = IDENTIFIER;
+	strcpy(tkn->lexeme, (char[2]){ lxr->input[(lxr->index)++], '\0' });
 }
 void start_integer(lexer *lxr)
 {
@@ -663,6 +634,7 @@ void tokenize(lexer *lxr)
 	int state = 0;
 	void (*action)(lexer*);
 
+	index = 0;
 	lxr->data = malloc(2 * sizeof(token));
 	lxr->size = 2;
 	lxr->count = 0;
