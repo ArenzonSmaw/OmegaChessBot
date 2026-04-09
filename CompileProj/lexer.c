@@ -6,15 +6,136 @@
 
 #pragma warning(disable:4996)
 
-#define NUM_OF_STATES 109
-#define NUM_OF_INPUTS 32
-#define NUM_OF_CHARS 128
 
+
+enum STATES {
+	ST_START,
+	ST_INTEGER,
+	ST_DOT,
+	ST_DIV,
+	ST_STRINGSTART,
+	ST_CHARSTART,
+	ST_CHARVALUE,
+	ST_BACKSLASH,
+	ST_FLOATINGNUMBER,
+	ST_RATIONALNUMBER,
+	ST_MINUS,
+	ST_IDENTIFIER,
+	ST_B,
+	ST_BO,
+	ST_BOO,
+	ST_BOOL,
+	ST_BR,
+	ST_BRE,
+	ST_BREA,
+	ST_BREAK,
+	ST_C,
+	ST_CH,
+	ST_CHE,
+	ST_CHEC,
+	ST_CHECK,
+	ST_CHA,
+	ST_CHAR,
+	ST_D,
+	ST_DE,
+	ST_DEC,
+	ST_DECL,
+	ST_DECLA,
+	ST_DECLAR,
+	ST_DECLARE,
+	ST_E,
+	ST_EL,
+	ST_ELS,
+	ST_ELSE,
+	ST_EX,
+	ST_EXC,
+	ST_EXCE,
+	ST_EXCEP,
+	ST_EXCEPT,
+	ST_EXCEPTI,
+	ST_EXCEPTIO,
+	ST_EXCEPTION,
+	ST_F,
+	ST_FA,
+	ST_FAL,
+	ST_FALS,
+	ST_FALSE,
+	ST_FL,
+	ST_FLO,
+	ST_FLOA,
+	ST_FLOAT,
+	ST_I,
+	ST_IF,
+	ST_IN,
+	ST_INT,
+	ST_L,
+	ST_LO,
+	ST_LOO,
+	ST_LOOP,
+	ST_N,
+	ST_NA,
+	ST_NAT,
+	ST_NATU,
+	ST_NATUR,
+	ST_NATURA,
+	ST_NATURAL,
+	ST_P,
+	ST_PA,
+	ST_PAS,
+	ST_PASS,
+	ST_PO,
+	ST_POI,
+	ST_POIN,
+	ST_POINT,
+	ST_POINTE,
+	ST_POINTER,
+	ST_R,
+	ST_RA,
+	ST_RAT,
+	ST_RATI,
+	ST_RATIO,
+	ST_RATION,
+	ST_RATIONA,
+	ST_RATIONAL,
+	ST_RE,
+	ST_RET,
+	ST_RETU,
+	ST_RETUR,
+	ST_RETURN,
+	ST_T,
+	ST_TR,
+	ST_TRU,
+	ST_TRUE,
+	ST_S,
+	ST_SH,
+	ST_SHO,
+	ST_SHOR,
+	ST_SHORT,
+	ST_ST,
+	ST_STR,
+	ST_STRI,
+	ST_STRIN,
+	ST_STRING,
+	ST_U,
+	ST_US,
+	ST_USE,
+	ST_V,
+	ST_VO,
+	ST_VOI,
+	ST_VOID,
+
+	ST_ERROR
+};
+
+#define NUM_OF_STATES (ST_ERROR+1)
+#define NUM_OF_INPUTS ((INPUT)PRINTABLE+1)
+#define NUM_OF_CHARS 128
 
 void start_token(lexer* lxr);
 void end_token(lexer* lxr);
 
 void conv_rational(lexer* lxr);
+void end_rational(lexer* lxr);
 void start_integer(lexer* lxr);
 void conv_integer(lexer* lxr);
 void end_integer(lexer* lxr);
@@ -36,7 +157,6 @@ void ignore(lexer* lxr);
 
 void end_token_start_operator(lexer*);
 void start_operator(lexer* lxr);
-void add_operator(lexer* lxr);
 
 void conv_vartype(lexer* lxr);
 void conv_errorhandler(lexer* lxr);
@@ -45,24 +165,35 @@ void conv_conditional(lexer* lxr);
 
 
 static int CHAR_CLASS[NUM_OF_CHARS] = { PRINTABLE };
-static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { 107 };
+static int GOTO[NUM_OF_STATES][NUM_OF_INPUTS] = { ST_ERROR };
 static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*) = { illegal_character };
 
-void set_table(int state, INPUT input_char, int goto_state, void (*action)(lexer*))
-{
-	GOTO[state][input_char] = goto_state;
-	ACTION[state][input_char] = action;
-}
-static void init_tables() // NEEDS UPDATING
-{
-	int ch, st; //character, state
+#define SET(from, input, to, action) do { GOTO[from][input] = to;  ACTION[from][input] = action; } while(0)
 
-	//CHAR CLASS TBL
-	// 
+void table_zero()
+{
+	int st, ch;
+	
+	for (ch = 0; ch <= 127; ch++)
+		CHAR_CLASS[ch] = PRINTABLE;
+
+	for (st = ST_START; st <= ST_ERROR; st++)
+	{
+		for (ch = UNKNOWN; ch <= PRINTABLE; ch++)
+		{
+			SET(st, ch, ST_ERROR, illegal_character);
+		}
+	}
+}
+void init_char_class_table()
+{
+	int ch;
+
 	//invisible characters
 	for (ch = 0; ch < 32; ch++)
 		CHAR_CLASS[ch] = UNKNOWN;
 	CHAR_CLASS[127] = UNKNOWN;
+
 	//whitespace characters
 	for (ch = 9; ch <= 13; ch++)
 		CHAR_CLASS[ch] = WHITESPACE;
@@ -101,18 +232,19 @@ static void init_tables() // NEEDS UPDATING
 		CHAR_CLASS[ch] = DIGIT;
 
 	//general operators
-	CHAR_CLASS['!'] = CHAR_CLASS['%'] = CHAR_CLASS['&'] = CHAR_CLASS[':'] = CHAR_CLASS['*'] = CHAR_CLASS['+'] = CHAR_CLASS['|'] = CHAR_CLASS['\\'] = OP;
-	for (ch = '<'; ch <= '>'; ch++)
-		CHAR_CLASS[ch] = OP;
+	CHAR_CLASS['!'] = CHAR_CLASS['%'] = CHAR_CLASS['&'] = 
+		CHAR_CLASS[':'] = CHAR_CLASS['*'] = CHAR_CLASS['+'] = 
+		CHAR_CLASS['|'] = CHAR_CLASS['<'] = CHAR_CLASS['>'] = CHAR_CLASS['='] = OP;
+	
 	//operators that can affect token types
 	CHAR_CLASS['-'] = MINUS;
 	CHAR_CLASS['.'] = DOT;
 	CHAR_CLASS['/'] = DIVIDE;
 
 	//control flow punctuation
-	CHAR_CLASS[','] = CHAR_CLASS['['] = CHAR_CLASS[']'] = CHAR_CLASS['{'] = CHAR_CLASS['}'] = CHAR_CLASS[';'] = CF;
-	for (ch = '\''; ch <= ')'; ch++)
-		CHAR_CLASS[ch] = CF;
+	CHAR_CLASS[','] = CHAR_CLASS['['] = CHAR_CLASS[']'] = 
+		CHAR_CLASS['{'] = CHAR_CLASS['}'] = CHAR_CLASS[';'] = 
+		CHAR_CLASS['('] = CHAR_CLASS[')'] = CF;
 
 	//quotation marks
 	CHAR_CLASS['\''] = SQUOTE;
@@ -120,279 +252,148 @@ static void init_tables() // NEEDS UPDATING
 
 	//backslash
 	CHAR_CLASS['\\'] = BACKSLASH;
+}
+void init_basic_cases()
+{
+	int st, ch;
 
-	//GOTO + ACTION TBL
-	for (st = 0; st < 106; st++)
+	for (st = ST_INT; st <= ST_ERROR; st++)
 	{
-		set_table(st, WHITESPACE, 0, end_token);
+		SET(st, WHITESPACE, ST_START, end_token);
+		SET(st, CF, ST_START, add_controlflow);
+		for (ch = OP; ch <= DOT; ch++)
+			SET(st, ch, ST_START, end_token_start_operator);
 
-		set_table(st, CF, 0, add_controlflow);
-
-		set_table(st, OP, 4, end_token_start_operator);
+		SET(st, UNKNOWN, ST_ERROR, unknown_character);
 	}
-	//floating point
-	set_table(0, DOT, 2, start_operator);
-	set_table(2, DIGIT, 1, conv_float);
-
-	//default state]
-	set_table(0, WHITESPACE, 0, ignore);
-	set_table(0, DIGIT, 1, start_integer);
-
-	//(strings and characters)
-	set_table(0, SQUOTE, 104, start_char);
-	for (ch = DIGIT; ch <= X; ch++) 
+	for (st = ST_B; st <= ST_VOID; st++)
 	{
-		set_table(104, ch, 105, illegal_character);
-	}
-	set_table(104, PRINTABLE, 107, illegal_character); // ADD 107 STATE
-	set_table(104, SQUOTE, 0, end_char);
-	set_table(105, SQUOTE, 0, end_char);
-
-	set_table(0, DQUOTE, 103, start_string);
-	set_table(103, DQUOTE, 0, end_string);
-	for (ch = DIGIT; ch <= X; ch++)
-	{
-		set_table(103, ch, 103, add_char);
-	}
-	set_table(103, WHITESPACE, 103, add_char);
-	set_table(103, PRINTABLE, 103, add_char);
-
-	//redirection to identifier
-	for (ch = LETTER; ch <= X; ch++)
-	{
-		set_table(0, ch, 5, start_token);
-	}
-
-	//redirection to keyword states
-	GOTO[0][B] = 6;
-	GOTO[0][C] = 14;
-	GOTO[0][D] = 21;
-	GOTO[0][E] = 28;
-	GOTO[0][F] = 40;
-	GOTO[0][I] = 45;
-	GOTO[0][L] = 49;
-	GOTO[0][N] = 55;
-	GOTO[0][P] = 62;
-	GOTO[0][R] = 72;
-	GOTO[0][S] = 85;
-	GOTO[0][U] = 95;
-	GOTO[0][V] = 98;
-
-	//numeral state
-	set_table(1, DIGIT, 1, add_char);
-	
-	set_table(1, DOT, 2, conv_float);
-
-	set_table(1, DIVIDE, 3, end_token_start_operator);
-	set_table(3, DIGIT, 108, conv_rational);//ADD 108 STATE!!!
-
-	set_table(1, WHITESPACE, 0, end_integer);
-	set_table(1, CF, 0, add_controlflow);
-
-
-
-	//operators state
-	set_table(4, WHITESPACE, 0, ignore);
-	set_table(4, OP, 4, add_operator);
-	set_table(4, DIGIT, 1, start_integer);
-	set_table(4, SQUOTE, 104, start_char);
-	set_table(4, DQUOTE, 103, start_string);
-
-	for (ch = LETTER; ch <= X; ch++)
-	{
-		set_table(4, ch, 5, start_token);
-	}
-	GOTO[4][B] = 6;
-	GOTO[4][C] = 14;
-	GOTO[4][D] = 21;
-	GOTO[4][E] = 28;
-	GOTO[4][F] = 40;
-	GOTO[4][I] = 45;
-	GOTO[4][L] = 49;
-	GOTO[4][N] = 55;
-	GOTO[4][P] = 62;
-	GOTO[4][R] = 72;
-	GOTO[4][S] = 85;
-	GOTO[4][U] = 95;
-	GOTO[4][V] = 98;
-
-
-	//identifiers
-	for (ch = DIGIT; ch <= X; ch++)
-	{
-		set_table(5, ch, 5, add_char);
-	}
-	set_table(5, PRINTABLE, 5, add_char);
-
-	for (st = 6; st <= 101; st++)
-	{ 
-		for (ch = DIGIT; ch <= X; ch++)
+		for (ch = DIGIT; ch <= PRINTABLE; ch++)
 		{
-			set_table(st, ch, 5, add_char);
+			SET(st, ch, ST_IDENTIFIER, conv_ident);
 		}
-		set_table(st, PRINTABLE, 5, add_char);
-		set_table(st, WHITESPACE, 0, end_token);
 	}
+}
+void init_default_states()
+{
+	int ch;
 
-	// keywords
-	GOTO[6][O] = 7; //b|ool
-	GOTO[7][O] = 8; //bo|ol
-	GOTO[8][L] = 9; //boo|l
-	ACTION[8][L] = conv_vartype; 
-	ACTION[9][PRINTABLE] = conv_ident;
+	SET(ST_START, WHITESPACE, ST_START, ignore);
+	SET(ST_START, DIGIT, ST_INT, start_integer);
+	SET(ST_START, DOT, ST_DOT, start_operator);
+	SET(ST_START, OP, ST_START, start_operator);
+	SET(ST_START, DIVIDE, ST_START, start_operator);
+	SET(ST_START, MINUS, ST_MINUS, start_operator);
+	SET(ST_START, SQUOTE, ST_CHARSTART, start_char);
+	SET(ST_START, DQUOTE, ST_STRINGSTART, start_string);
+	SET(ST_START, CF, ST_START, start_controlflow);
 
-	GOTO[6][R] = 10; //b|reak
-	GOTO[10][E] = 11; //br|eak
-	GOTO[11][A] = 12; //bre|ak
-	GOTO[12][K] = 13; //brea|k
-	ACTION[12][K] = conv_controlflow;
-	ACTION[13][PRINTABLE] = conv_ident;
+	for (ch = LETTER; ch <= PRINTABLE; ch++)
+	{
+		SET(ST_START, ch, ST_IDENTIFIER, start_token);
+		SET(ST_CHARSTART, ch, ST_CHARVALUE, add_char);
+		SET(ST_CHARSTART, ch, ST_ERROR, illegal_character);
+		SET(ST_BACKSLASH, ch, ST_CHARVALUE, add_char);
+		SET(ST_STRINGSTART, ch, ST_STRINGSTART, add_char);
+	}
+	SET(ST_CHARSTART, DIGIT, ST_CHARVALUE, add_char);
+	SET(ST_STRINGSTART, DIGIT, ST_STRINGSTART, add_char);
+	SET(ST_STRINGSTART, DQUOTE, ST_START, end_string);
+	SET(ST_CHARVALUE, SQUOTE, ST_START, end_char);
 
-	GOTO[14][H] = 15; //c|har , c|heck
-	
-	GOTO[15][A] = 19; //ch|ar
-	GOTO[19][R] = 20; //cha|r
-	ACTION[19][R] = conv_vartype;
-	ACTION[20][PRINTABLE] = conv_ident;
-
-	GOTO[15][E] = 16; //ch|eck
-	GOTO[16][C] = 17; //che|ck
-	GOTO[17][K] = 18; //chec|k
-	ACTION[17][K] = conv_errorhandler;
-	ACTION[18][PRINTABLE] = conv_ident;
-
-	GOTO[21][E] = 22; //d|ecalre
-	GOTO[22][C] = 23; //de|clare
-	GOTO[23][L] = 24; //dec|lare
-	GOTO[24][A] = 25; //decl|are
-	GOTO[25][R] = 26; //decla|re
-	GOTO[26][E] = 27; //declar|e
-	ACTION[26][E] = conv_declare;
-	ACTION[27][PRINTABLE] = conv_ident;
-
-	GOTO[28][L] = 29; //e|lse
-	GOTO[28][X] = 32; //e|xception
-
-	GOTO[29][S] = 30; //el|se
-	GOTO[30][E] = 31; //els|e
-	ACTION[30][E] = conv_conditional;
-	ACTION[31][PRINTABLE] = conv_ident;
-
-	GOTO[32][C] = 33; //ex|ception
-	GOTO[33][E] = 34; //exc|eption
-	GOTO[34][P] = 35; //exce|ption
-	GOTO[35][T] = 36; //excep|tion
-	GOTO[36][I] = 37; //except|ion
-	GOTO[37][O] = 38; //excepti|on
-	GOTO[38][N] = 39; //exceptio|n
-	ACTION[38][N] = conv_errorhandler;
-	ACTION[39][PRINTABLE] = conv_ident;
-
-	GOTO[40][L] = 41; //f|loat
-	GOTO[41][O] = 42; //fl|oat
-	GOTO[42][A] = 43; //flo|at
-	GOTO[43][T] = 44; //floa|t
-	ACTION[43][T] = conv_vartype;
-	ACTION[44][PRINTABLE] = conv_ident;
-
-	GOTO[45][F] = 46; //i|f
-	ACTION[45][F] = conv_conditional;
-	ACTION[46][PRINTABLE] = conv_ident;
-
-	GOTO[45][N] = 47; //i|nt
-	GOTO[47][T] = 48; //in|t
-	ACTION[47][T] = conv_vartype;
-	ACTION[48][PRINTABLE] = conv_ident;
-
-	GOTO[49][O] = 50; //l|ong, l|oop
-	
-	GOTO[50][O] = 53; //lo|op
-	GOTO[53][P] = 54; //loo|p
-	ACTION[53][P] = conv_controlflow;
-	ACTION[54][PRINTABLE] = conv_ident;
-
-	GOTO[50][N] = 51; //lo|ng
-	GOTO[51][G] = 52; //lon|g
-	ACTION[51][G] = conv_vartype;
-	ACTION[52][PRINTABLE] = conv_ident;
-
-	GOTO[55][A] = 56; //n|atural
-	GOTO[56][T] = 57; //na|tural
-	GOTO[57][U] = 58; //nat|ural
-	GOTO[58][R] = 59; //natu|ral
-	GOTO[59][A] = 60; //natur|al
-	GOTO[60][L] = 61; //natura|l
-	ACTION[60][L] = conv_vartype;
-	ACTION[61][PRINTABLE] = conv_ident;
-
-	GOTO[62][A] = 63; //p|ass
-	GOTO[63][S] = 64; //pa|ss
-	GOTO[64][S] = 65; //pas|s
-	ACTION[64][S] = conv_controlflow;
-	ACTION[65][PRINTABLE] = conv_ident;
-
-	GOTO[62][O] = 66; //p|ointer
-	GOTO[66][I] = 67; //po|inter
-	GOTO[67][N] = 68; //poi|nter
-	GOTO[68][T] = 69; //poin|ter
-	GOTO[69][E] = 70; //point|er
-	GOTO[70][R] = 71; //pointe|r
-	ACTION[70][R] = conv_vartype;
-	ACTION[71][PRINTABLE] = conv_ident;
-
-	GOTO[72][A] = 73; //r|ational
-	GOTO[73][T] = 74; //ra|tional
-	GOTO[74][I] = 75; //rat|ional
-	GOTO[75][O] = 76; //rati|onal
-	GOTO[76][N] = 77; //ratio|nal
-	GOTO[77][A] = 78; //ration|al
-	GOTO[78][L] = 79; //rationa|l
-	ACTION[78][L] = conv_vartype;
-	ACTION[79][PRINTABLE] = conv_ident;
-
-	GOTO[72][E] = 80; //r|eturn
-	GOTO[80][T] = 81; //re|turn
-	GOTO[81][U] = 82; //ret|urn
-	GOTO[82][R] = 83; //retu|rn
-	GOTO[83][N] = 84; //retur|n
-	ACTION[83][N] = conv_controlflow;
-	ACTION[84][PRINTABLE] = conv_ident;
-
-	GOTO[85][H] = 86; //s|hort
-	GOTO[86][O] = 87; //sh|ort
-	GOTO[87][R] = 88; //sho|rt
-	GOTO[88][T] = 89; //shor|t
-	ACTION[88][T] = conv_vartype;
-	ACTION[89][PRINTABLE] = conv_ident;
-
-	GOTO[85][T] = 90; //s|tring
-	GOTO[90][R] = 91; //st|ring
-	GOTO[91][I] = 92; //str|ing
-	GOTO[92][N] = 93; //stri|ng
-	GOTO[93][G] = 94; //strin|g
-	ACTION[93][G] = conv_vartype;
-	ACTION[94][PRINTABLE] = conv_ident;
-
-	GOTO[95][S] = 96; //u|se
-	GOTO[96][E] = 97; //us|e
-	ACTION[96][E] = conv_declare;
-	ACTION[97][PRINTABLE] = conv_ident;
-
-	GOTO[98][O] = 99;  //v|oid
-	GOTO[99][I] = 100; //vo|id
-	GOTO[100][D] = 101;//voi|d
-	ACTION[100][D] = conv_vartype;
-	ACTION[101][PRINTABLE] = conv_ident;
-
-	//error handling - panic mode recovery
 	for (ch = UNKNOWN; ch <= PRINTABLE; ch++)
+		SET(ST_ERROR, ch, ST_ERROR, ignore);
+	for (ch = WHITESPACE; ch <= DQUOTE; ch++)
+		SET(ST_ERROR, ch, ST_START, end_token);
+}
+void init_numeric_states()
+{
+	SET(ST_INTEGER, DIGIT, ST_INTEGER, add_char);
+	SET(ST_INTEGER, WHITESPACE, ST_INTEGER, end_integer);
+	
+	SET(ST_INTEGER, OP, ST_START, end_token_start_operator);
+	SET(ST_INTEGER, MINUS, ST_START, end_token_start_operator);
+	SET(ST_INTEGER, DIVIDE, ST_DIV, end_token_start_operator);
+	SET(ST_INTEGER, DOT, ST_DOT, end_token_start_operator);
+
+	SET(ST_DOT, DIGIT, ST_FLOATINGNUMBER, conv_float);
+	SET(ST_DIV, DIGIT, ST_RATIONALNUMBER, conv_rational);
+
+	SET(ST_FLOATINGNUMBER, DIGIT, ST_FLOATINGNUMBER, add_char);
+	SET(ST_FLOATINGNUMBER, WHITESPACE, ST_START, end_float);
+	SET(ST_RATIONALNUMBER, DIGIT, ST_RATIONALNUMBER, add_char);
+	SET(ST_RATIONALNUMBER, WHITESPACE, ST_START, end_rational);
+}
+
+typedef struct {
+	char* letters;
+	void (*assignment)(lexer*);
+}keyword;
+void init_keywords(int start_num, keyword kws[], int kws_num)
+{
+	int i, letter, state_num = start_num, last;
+	char* word;
+
+	for (i = 0; i < kws_num; i++)
 	{
-		set_table(107, ch, 107, add_char);
+		word = kws[i].letters; 
+		letter = *word;
+		if (GOTO[ST_START][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
+			SET(ST_START, CHAR_CLASS[*word], state_num, start_token);
+			last = state_num;
+			state_num++;
+		}
+		word++;
+		while (word[0] != '\0')
+		{
+			letter = *word;
+			if (GOTO[last][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
+				SET(last, CHAR_CLASS[letter], state_num, add_char);
+				last = state_num;
+				state_num++;
+			}
+			word++;
+		}
+		ACTION[last][CHAR_CLASS[letter]] = kws[i].assignment;
 	}
-	for (ch = CF; ch <= DQUOTE; ch++)
-	{
-		set_table(107, ch, 0, end_token);
-	}
+}
+void init_keywords_states()
+{
+	keyword keywords[] = {
+		{ "bool",conv_vartype } ,
+		{ "break", conv_controlflow },
+		{ "check", conv_errorhandler },
+		{ "char", conv_vartype },
+		{ "declare", conv_declare },
+		{ "exception", conv_errorhandler },
+		{ "else", conv_conditional },
+		{ "false", conv_bool },
+		{ "float", conv_vartype },
+		{ "if", conv_conditional },
+		{ "int", conv_vartype },
+		{ "loop", conv_controlflow },
+		{ "natural", conv_vartype },
+		{ "pass", conv_controlflow },
+		{ "pointer", conv_vartype },
+		{ "rational", conv_vartype },
+		{ "return", conv_controlflow },
+		{ "short", conv_vartype },
+		{ "string", conv_vartype },
+		{ "true", conv_bool },
+		{ "use", conv_declare },
+		{ "void", conv_vartype }
+	};
+	init_keywords(ST_B, keywords, 22);
+}
+
+void init_tables() 
+{
+	table_zero();
+	init_char_class_table();
+	init_basic_cases();
+	init_default_states();
+	init_numeric_states();
+	init_keywords_states();
 } 
 
 void start_token(lexer* lxr)
@@ -403,19 +404,29 @@ void start_token(lexer* lxr)
 	int i;
 	if (lxr->count == lxr->size)
 	{
-		realloc(lxr->data, lxr->size * 2);
-		lxr->size *= 2;
-
-		if (!lxr->data) memory_error();
-		for (i = lxr->count; i < lxr->size; i++)
+		lxr->data = (token*)realloc(lxr->data, lxr->size * 2);
+		if (lxr->data == NULL)
 		{
-			strcpy(lxr->data[i].lexeme, "\0");
+			memory_error();
+		}
+		else
+		{
+			lxr->size *= 2;
+
+			if (!lxr->data) memory_error();
+			for (i = lxr->count; i < lxr->size; i++)
+			{
+				strcpy(lxr->data[i].lexeme, "\0");
+			}
 		}
 	}
 
-	tkn = &(lxr->data[lxr->count]);
-	tkn->type = IDENTIFIER;
-	strcpy(tkn->lexeme, (char[2]){ lxr->input[(lxr->index)++], '\0' });
+	if (lxr->data != NULL) 
+	{
+		tkn = &(lxr->data[lxr->count]);
+		tkn->type = IDENTIFIER;
+		strcpy(tkn->lexeme, (char[2]) { lxr->input[(lxr->index)++], '\0' });
+	}
 }
 void start_integer(lexer *lxr)
 {
@@ -447,6 +458,9 @@ void end_integer(lexer* lxr)
 void conv_float(lexer* lxr)
 {
 	//converts current token type to float
+	lxr->count--;
+	lxr->index--;
+	add_char(lxr);
 	add_char(lxr);
 	lxr->data[lxr->count].type = FLOAT;
 }
@@ -545,23 +559,8 @@ void end_token_start_operator(lexer* lxr)
 }
 void start_operator(lexer *lxr)
 {
-	//starts operator token and checks for dual character operators ie ++ += /= 
+	//starts operator token 
 	start_token(lxr);
-	lxr->data[lxr->count].type = OPERATOR;
-	if (CHAR_CLASS[lxr->input[lxr->index]] == OPERATOR)
-	{
-		lxr->index++;
-		add_char(lxr);
-	}
-	else
-	{
-		lxr->count++;
-	}
-}
-void add_operator(lexer *lxr)
-{
-	//starts new operator token assuming single character operator;
-	start_operator(lxr);
 	lxr->data[lxr->count].type = OPERATOR;
 	lxr->count++;
 }
@@ -599,8 +598,9 @@ void ignore(lexer *lxr)
 void end_token(lexer* lxr)
 {
 	//ends token with checking for ending method
+	type tkn_type;
 	static void (*method)(lexer*);
-	static void(*END_METHOD[(type)DECLARE + 1])(lexer*) =
+	static void(*end_method[(type)DECLARE + 1])(lexer*) =
 	{	
 		/*INT*/		end_integer, 
 		/*CF*/		ignore, 
@@ -609,7 +609,7 @@ void end_token(lexer* lxr)
 		/*OP*/		ignore, 
 		/*STR*/		expected_error, 
 		/*NAT*/		ignore, 
-		/*RAT*/		ignore,
+		/*RAT*/		end_rational,
 		/*BOOL*/	ignore, 
 		/*COND*/	ignore, 
 		/*IDENT*/	ignore, 
@@ -617,7 +617,8 @@ void end_token(lexer* lxr)
 		/*ERR*/		ignore, 
 		/*DECLARE*/	ignore
 	};
-	method = END_METHOD[lxr->data[lxr->count].type];
+	tkn_type = lxr->data[lxr->count].type;
+	method = end_method[lxr->data[lxr->count].type];
 	if (method == ignore)
 		lxr->count++;
 	else {
@@ -639,7 +640,7 @@ void tokenize(lexer *lxr)
 	lxr->size = 2;
 	lxr->count = 0;
 
-	init_tables(CHAR_CLASS, GOTO, ACTION);
+	init_tables();
 
 
 	while (input[index] != '\0')
