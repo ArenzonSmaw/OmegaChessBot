@@ -1,0 +1,2 @@
+use declarationofindependence
+declade taco: string = "taco"

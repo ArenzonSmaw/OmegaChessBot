@@ -8,7 +8,7 @@
 
 
 
-enum STATES {
+typedef enum STATES {
 	ST_START,
 	ST_INTEGER,
 	ST_DOT,
@@ -125,7 +125,7 @@ enum STATES {
 	ST_VOID,
 
 	ST_ERROR
-};
+} state;
 
 #define NUM_OF_STATES (ST_ERROR+1)
 #define NUM_OF_INPUTS ((INPUT)PRINTABLE+1)
@@ -257,7 +257,7 @@ void init_basic_cases()
 {
 	int st, ch;
 
-	for (st = ST_INT; st <= ST_ERROR; st++)
+	for (st = ST_INTEGER; st <= ST_ERROR; st++)
 	{
 		SET(st, WHITESPACE, ST_START, end_token);
 		SET(st, CF, ST_START, add_controlflow);
@@ -266,7 +266,7 @@ void init_basic_cases()
 
 		SET(st, UNKNOWN, ST_ERROR, unknown_character);
 	}
-	for (st = ST_B; st <= ST_VOID; st++)
+	for (st = ST_IDENTIFIER; st <= ST_VOID; st++)
 	{
 		for (ch = DIGIT; ch <= PRINTABLE; ch++)
 		{
@@ -279,7 +279,7 @@ void init_default_states()
 	int ch;
 
 	SET(ST_START, WHITESPACE, ST_START, ignore);
-	SET(ST_START, DIGIT, ST_INT, start_integer);
+	SET(ST_START, DIGIT, ST_INTEGER, start_integer);
 	SET(ST_START, DOT, ST_DOT, start_operator);
 	SET(ST_START, OP, ST_START, start_operator);
 	SET(ST_START, DIVIDE, ST_START, start_operator);
@@ -292,7 +292,7 @@ void init_default_states()
 	{
 		SET(ST_START, ch, ST_IDENTIFIER, start_token);
 		SET(ST_CHARSTART, ch, ST_CHARVALUE, add_char);
-		SET(ST_CHARSTART, ch, ST_ERROR, illegal_character);
+		SET(ST_CHARVALUE, ch, ST_ERROR, illegal_character);
 		SET(ST_BACKSLASH, ch, ST_CHARVALUE, add_char);
 		SET(ST_STRINGSTART, ch, ST_STRINGSTART, add_char);
 	}
@@ -309,7 +309,7 @@ void init_default_states()
 void init_numeric_states()
 {
 	SET(ST_INTEGER, DIGIT, ST_INTEGER, add_char);
-	SET(ST_INTEGER, WHITESPACE, ST_INTEGER, end_integer);
+	SET(ST_INTEGER, WHITESPACE, ST_START, end_integer);
 	
 	SET(ST_INTEGER, OP, ST_START, end_token_start_operator);
 	SET(ST_INTEGER, MINUS, ST_START, end_token_start_operator);
@@ -331,26 +331,42 @@ typedef struct {
 }keyword;
 void init_keywords(int start_num, keyword kws[], int kws_num)
 {
-	int i, letter, state_num = start_num, last;
+	int i /*, letter*/; 
+	state state_num = start_num, current, last;
 	char* word;
+	char letter;
 
 	for (i = 0; i < kws_num; i++)
 	{
+		current = ST_START;
 		word = kws[i].letters; 
 		letter = *word;
-		if (GOTO[ST_START][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
-			SET(ST_START, CHAR_CLASS[*word], state_num, start_token);
-			last = state_num;
+		
+		if (GOTO[current][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
+			SET(current, CHAR_CLASS[*word], state_num, start_token);
+			last = current;
+			current = state_num;
 			state_num++;
+		}
+		else
+		{
+			last = current;
+			current = GOTO[ST_START][CHAR_CLASS[letter]];
 		}
 		word++;
 		while (word[0] != '\0')
 		{
 			letter = *word;
-			if (GOTO[last][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
-				SET(last, CHAR_CLASS[letter], state_num, add_char);
-				last = state_num;
+			if (GOTO[current][CHAR_CLASS[letter]] == ST_IDENTIFIER) {
+				SET(current, CHAR_CLASS[letter], state_num, add_char);
+				last = current;
+				current = state_num;
 				state_num++;
+			}
+			else
+			{
+				last = current;
+				current = GOTO[current][CHAR_CLASS[letter]];
 			}
 			word++;
 		}
@@ -360,7 +376,7 @@ void init_keywords(int start_num, keyword kws[], int kws_num)
 void init_keywords_states()
 {
 	keyword keywords[] = {
-		{ "bool",conv_vartype } ,
+		{ "bool", conv_vartype } ,
 		{ "break", conv_controlflow },
 		{ "check", conv_errorhandler },
 		{ "char", conv_vartype },
@@ -404,7 +420,7 @@ void start_token(lexer* lxr)
 	int i;
 	if (lxr->count == lxr->size)
 	{
-		lxr->data = (token*)realloc(lxr->data, lxr->size * 2);
+		lxr->data = (token*)realloc(lxr->data, lxr->size * 2 * sizeof(token));
 		if (lxr->data == NULL)
 		{
 			memory_error();
@@ -451,14 +467,14 @@ void end_integer(lexer* lxr)
 {
 	//finishes handling current token and parsing lexeme into integer value
 	token* temp = &(lxr->data[lxr->count]);
-	lxr->index++;
+	//lxr->index++;
 	temp->value = strtod(temp->lexeme, NULL);
 	lxr->count++;
 }
 void conv_float(lexer* lxr)
 {
 	//converts current token type to float
-	lxr->count--;
+	lxr->count -= 2;
 	lxr->index--;
 	add_char(lxr);
 	add_char(lxr);
@@ -469,6 +485,7 @@ void end_float(lexer* lxr)
 	//finishes handling float token
 	token* tkn = &(lxr->data[lxr->count]);
 	tkn->value = strtod(tkn->lexeme, NULL);
+	lxr->count++;
 }
 void conv_rational(lexer* lxr) //TODO 
 {
@@ -632,7 +649,7 @@ void end_token(lexer* lxr)
 void tokenize(lexer *lxr)
 {
 	INPUT ch_class;
-	int state = 0;
+	state state = ST_START;
 	void (*action)(lexer*);
 
 	index = 0;
@@ -643,7 +660,7 @@ void tokenize(lexer *lxr)
 	init_tables();
 
 
-	while (input[index] != '\0')
+	while (input[index] != '\0' && input[index] <= 127)
 	{
 		ch_class = CHAR_CLASS[input[index]];
 
