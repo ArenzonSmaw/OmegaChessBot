@@ -1,30 +1,13 @@
-#include "common.h"
-#include "lexer.h"
-#include "io.h"
+#include "parser.h"
+#include "grammar.h"
 
-int dict(string str) {
-	if (str == "int") return 1;
-	if (str == "char") return 2;
+void (*(ACTION[1][TERMINALS_COUNT]))(parser* prsr);
+
+
+void parse(parser* prsr)
+{
+	void (*action)(parser*);
+	int state = 0;
+
+
 }
-
-void printTokenType(int n) {
-	switch (n) {
-	case 1:
-		printLn("int");
-		break;
-
-	case 2:
-		printLn("char");
-	}
-}
-
-/*void Parse() {
-	
-	int token;
-
-	while (token != "end") {
-		token = getNextToken();
-	}
-
-
-}*/

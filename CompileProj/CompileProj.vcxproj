@@ -125,17 +125,21 @@
   <ItemGroup>
     <ClCompile Include="ast.c" />
     <ClCompile Include="error.c" />
+    <ClCompile Include="grammar.c" />
     <ClCompile Include="lexer.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="parser.c" />
+    <ClCompile Include="stack.c" />
     <ClCompile Include="utils.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />
     <ClInclude Include="error.h" />
+    <ClInclude Include="grammar.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="lexer.h" />
     <ClInclude Include="parser.h" />
+    <ClInclude Include="stack.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

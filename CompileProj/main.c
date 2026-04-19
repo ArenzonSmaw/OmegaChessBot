@@ -18,21 +18,14 @@ int main(/*int argc, char* argv[]*/) {
     rewind(inp_file);
 
     lxr.input = (char*)malloc(sizeof(char) * (size + 1));
-
     terminator_index = fread(lxr.input, sizeof(char), size, inp_file);
-    lxr.input[terminator_index] = '\0';
+    
+    lxr.input[size] = '\0';
 
     
     tokenize(&lxr);
 
-    for (int i = 0; i < lxr.count; i++) {
-        lexeme = lxr.data[i].lexeme;
-        printf("%s  ", lexeme);
-    }
 
-    printf("\n\n");
-    printf("%s", lxr.input);
-    printf("end!");
         
 
 	return 0;

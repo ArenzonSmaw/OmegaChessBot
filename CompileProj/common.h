@@ -22,8 +22,10 @@ typedef enum {
 	CONDITIONAL,
 	IDENTIFIER,
 	VARTYPE,
+	LAST_RESULT,
 	ERROR_HANDLER,
-	DECLARE
+	DECLARE,
+	TOKEN_TYPE_COUNT
 } type;
 
 typedef struct {
@@ -32,13 +34,5 @@ typedef struct {
 	type type;
 } token;
 
-typedef struct {
-	char* input;
-	int index;
-
-	token* data;
-	int size;
-	int count;
-} lexer;
 
 #endif

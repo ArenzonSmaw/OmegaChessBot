@@ -1,0 +1,97 @@
+program -> stmt_list
+
+stmt_list -> statement_list statement
+stmt_list -> statement
+
+block -> {stmt_list}
+block -> {}
+
+statement -> expression ;
+statement -> condition_stmt | loop_stmt | declare_stmt | return_stmt | assign_stmt | check_stmt | controlflow_stmt
+
+assign_stmt -> id = expression
+assign_stmt -> : type : id = expression
+assign_stmt -> id ++ inc_term
+assign_stmt -> id -- inc_term
+assign_stmt -> id ** inc_term
+assign_stmt -> id // inc_term
+
+inc_term -> term
+inc_term -> ε 
+
+controlflow_stmt -> break | pass ;
+
+check_stmt -> check ( expression, id ) block
+
+condition_stmt -> if_stmt | else_stmt
+if_stmt -> if ( expression ) block
+else_stmt -> else ( expression ) block
+else_stmt -> else block
+
+return_stmt -> return expression ;
+
+loop_stmt -> loop ( loop_logic ) block
+loop_logic -> statement ; statement ; statement
+loop_logic -> statement ; statement
+loop_logic -> statement
+
+declare_stmt -> use_declaration | declaration
+use_declaration -> use: statement ;
+declaration -> declare var_ident value_assignment ;
+declaration -> declare : type id ( param_list ) block ;
+
+var_ident -> id : type
+var_ident -> id
+
+param_list -> var_ident , param_list
+param_list -> var_ident
+
+value_assignment -> = expression 
+value_assignment -> ε
+
+type -> int | float | natural | rational | char | string | pointer | void | exception
+
+expression -> logic_expr
+
+logic_expr -> logic_expr && cmpr_expr
+logic_expr -> logic_expr || cmpr_expr
+logic_expr -> cmpr_expr
+
+cmpr_expr -> arith_expr > arith_expr
+cmpr_expr -> arith_expr >= arith_expr
+cmpr_expr -> arith_expr < arith_expr
+cmpr_expr -> arith_expr <= arith_expr
+cmpr_expr -> arith_expr == arith_expr
+cmpr_expr -> arith_expr != arith_expr
+cmpr_expr -> arith_expr
+
+arith_expr -> arith_expr + term
+arith_expr -> arith_expr - term
+arith_expr -> term
+
+term -> term * factor 
+term -> term / factor
+term -> term % factor
+term -> term %% factor
+term -> term >> factor
+term -> term << factor
+term -> term & factor
+term -> term ~| factor
+term -> term | factor
+term -> factor
+
+factor -> (expression)
+factor -> !factor
+factor -> factor !!
+factor -> -factor
+factor -> id
+factor -> id ( expression_list )
+expression_ilst -> expression_list, expression
+expression_list -> expression
+factor -> literal
+factor -> : type : factor
+factor -> _
+
+literal -> integer_literal | float_literal | rational_literal 
+		| char_literal | string_literal | boolean_literal 
+
