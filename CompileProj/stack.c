@@ -1,6 +1,6 @@
 #include "stack.h"
 
-stack init()
+stack init_stack()
 {
 	stack s = NULL;
 	return s;
@@ -11,13 +11,13 @@ int isEmpty(stack s)
 	return s == NULL;
 }
 
-void add_node(Symbol* new_item, stack* old_s)
+void add_node(item* new_item, stack* old_s)
 {
 	stack s = (stack)malloc(sizeof(stack_node));
 	s->next = old_s;
 	s->data = new_item;
 }
-void push(stack* s, Symbol* sb)
+void push(stack* s, item* sb, int stt)
 {
 	if (isEmpty(*s))
 		add_node(sb, NULL);
@@ -25,9 +25,9 @@ void push(stack* s, Symbol* sb)
 		add_node(sb, s);
 }
 
-Symbol* pop(stack* s)
+info* pop(stack* s)
 {
-	Symbol* sb = NULL;
+	info* sb = NULL;
 	stack temp;
 	if (!isEmpty(*s))
 	{

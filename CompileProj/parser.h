@@ -1,7 +1,8 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "common.h"
+#include "lexer.h"
+#include "stack.h"
 
 typedef struct ast_node
 {
@@ -14,24 +15,15 @@ AST init_ast(token* tkn);
 int add_son(AST ast, token* tkn);
 
 typedef struct {
+	stack stck;
+	AST ast;
+	int state;
 	token* input;
 	int input_size;
-	AST ast;
+	int index;
+
+	error_list err_lst;
 } parser;
 
-typedef enum {
-	FACTOR,
-	TERM,
-	ARITH_EXPR,
-	CMPR_EXPR,
-	LOGIC_EXPR,
-	DECLARE_STMT,
-	CONDITION_STMT,
-	LOOP_STMT,
-	CONTROLFLOW_STMT,
-	STATEMENT,
-	STATEMENT_LIST,
-	PROGRAM
-} precedence;
-
+void init_slr_tables();
 #endif

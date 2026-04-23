@@ -1,22 +1,22 @@
 #include "grammar.h"
+//
+//typedef enum {
+//	ID,
+//	LITERAL,
+//	TYPE,
+//	FACTOR,
+//	TERM,
+//	EXPRESSION,
+//	STATEMENT,
+//	PROGRAM,
+//	NON_TERMINALS_COUNT
+//} non_terminal;
 
-typedef enum {
-	ID,
-	LITERAL,
-	TYPE,
-	FACTOR,
-	TERM,
-	EXPRESSION,
-	STATEMENT,
-	PROGRAM,
-	NON_TERMINALS_COUNT
-} non_terminal;
 
 
-
-grammar_rule* rule(Symbol s, Symbol* arr)
+item_set* rule(item s, item* arr)
 {
-	grammar_rule* gr = (grammar_rule*)malloc(sizeof(grammar_rule));
+	item_set* gr = (item_set*)malloc(sizeof(item_set));
 	gr->lhs = s;
 	gr->rhs = arr;
 }

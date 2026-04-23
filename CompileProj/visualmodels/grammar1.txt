@@ -16,7 +16,7 @@ assign_stmt -> id -- inc_term
 assign_stmt -> id ** inc_term
 assign_stmt -> id // inc_term
 
-inc_term -> term
+inc_term -> expression
 inc_term -> ε 
 
 controlflow_stmt -> break | pass ;
@@ -31,9 +31,9 @@ else_stmt -> else block
 return_stmt -> return expression ;
 
 loop_stmt -> loop ( loop_logic ) block
-loop_logic -> statement ; statement ; statement
+loop_logic -> declaration -> expression; statement
 loop_logic -> statement ; statement
-loop_logic -> statement
+loop_logic -> expression
 
 declare_stmt -> use_declaration | declaration
 use_declaration -> use: statement ;
@@ -57,13 +57,13 @@ logic_expr -> logic_expr && cmpr_expr
 logic_expr -> logic_expr || cmpr_expr
 logic_expr -> cmpr_expr
 
-cmpr_expr -> arith_expr > arith_expr
-cmpr_expr -> arith_expr >= arith_expr
-cmpr_expr -> arith_expr < arith_expr
-cmpr_expr -> arith_expr <= arith_expr
-cmpr_expr -> arith_expr == arith_expr
-cmpr_expr -> arith_expr != arith_expr
-cmpr_expr -> arith_expr
+cmpr_expr -> cmpr_expr > arith_expr
+cmpr_expr -> cmpr_expr >= arith_expr
+cmpr_expr -> cmpr_expr < arith_expr
+cmpr_expr -> cmpr_expr <= arith_expr
+cmpr_expr -> cmpr_expr == arith_expr
+cmpr_expr -> cmpr_expr != arith_expr
+cmpr_expr -> cmpr_expr
 
 arith_expr -> arith_expr + term
 arith_expr -> arith_expr - term

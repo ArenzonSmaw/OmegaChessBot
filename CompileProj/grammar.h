@@ -1,28 +1,25 @@
 #ifndef GRAMMAR_H
 #define GRAMMAR_H
 
-#include "common.h"
+#define TOKEN_MAX_LENGTH 33
+
+#include <stdlib.h>
+#include <stdio.h>
 
 typedef enum {
-	
-	FACTOR,
-	TERM,
-	EXPRESSION,
-	STATEMENT,
-	PROGRAM,
-	NON_TERMINALS_COUNT
-} non_terminal;
 
-typedef enum {
+	//TERMINALS
 	ID,
-	NUM_LITERAL,
+	INT_LITERAL,
+	FLOAT_LITERAL,
 	RAT_LITERAL,
-	TXT_LITERAL,
+	CHR_LITERAL,
+	STR_LITERAL,
 	BOOL_LITERAL,
-	LITERAL,
 
 	TYPE,
 
+	UNKNOWN_OPERATOR,
 	AND,
 	ANDAND,
 	OR,
@@ -45,11 +42,12 @@ typedef enum {
 	DBL_MULT,
 	DIVIDE,
 	DBL_DIVIDE,
-	MODULUS,
+	MOD,
 	DBL_MOD,
 	NOT,
 	NOTNOT,
 	COLON,
+	ARROW,
 
 	SEMICOLON,
 	COMMA,
@@ -64,33 +62,51 @@ typedef enum {
 	PASS,
 	LOOP,
 	DECLARE,
+	USE,
 
+	IF,
+	ELSE,
 	CHECK,
+	EXCEPTION,
 	UNDERLINE,
-	TERMINALS_COUNT
-} terminal, type;
+	END_TOKEN,
+	TERMINALS_COUNT,
 
-typedef struct {
-	char lexeme[TOKEN_MAX_LENGTH];
-	double value;
-	terminal type;
-} token;
+	//NON TERMINALS
+	LITERAL,
+	PARAMETER,
+	PARAM_LIST,
+	FACTOR,
+	ARG_LIST,
+	TERM,
+	ARITH_EXPR,
+	CMPR_EXPR,
+	LOGIC_EXPR,
+	EXPRESSION,
+	INCREMENTAL,
+	STATEMENT,
+	STMT_LIST,
+	BLOCK,
+	PROGRAM,
+	S_TAG,
+
+	SYMBOLS_COUNT
+} symbol;
+
 
 typedef struct
 {
-	union {
-		non_terminal nonterm;
-		terminal terminal;
-	};
+	symbol symbol;
 	int isTerminal;
-} Symbol;
+} item;
 
 typedef struct
 {
-	Symbol lhs;
-	Symbol* rhs;
+	item lhs;
+	item* rhs;
+	int pos, length;
+} item_set, * items_arr;
 
-} grammar_rule, * grammar_rules;
+item_set* rule(item, item*);
 
-grammar_rule* rule(Symbol, Symbol*);
 #endif

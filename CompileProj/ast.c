@@ -1,4 +1,5 @@
-#include "parser.h"
+#include "compiler.h"
+#include <stdlib.h>
 
 AST init_ast(token* tkn)
 {

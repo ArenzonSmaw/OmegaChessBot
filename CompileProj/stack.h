@@ -1,19 +1,25 @@
 #ifndef STACK_H
 #define STACK_H
 
-#include "parser.h"
+#include <stdlib.h>
 #include "grammar.h"
+
+typedef struct {
+	item* item;
+	int* state;
+	int* rule_index;
+}info;
 
 typedef struct stack_node
 {
-	Symbol *data;
+	info *data;
 	struct stack_node* next;
 
 } stack_node, *stack;
 
-stack init();
-void push(stack*, Symbol*);
-Symbol* pop(stack*);
+stack init_stack();
+void push(stack*, item*, int);
+info* pop(stack*);
 int isEmpty(stack);
 void free_stack(stack*);
 
