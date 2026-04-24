@@ -3,11 +3,12 @@
 
 #include <stdlib.h>
 #include "grammar.h"
+#include "ast.h"
 
 typedef struct {
-	item* item;
-	int* state;
-	int* rule_index;
+	symbol item;
+	AST node;
+	int state;
 }info;
 
 typedef struct stack_node
@@ -18,8 +19,9 @@ typedef struct stack_node
 } stack_node, *stack;
 
 stack init_stack();
-void push(stack*, item*, int);
+void push(stack*, symbol symbol, AST node, int state);
 info* pop(stack*);
+info* top(stack*);
 int isEmpty(stack);
 void free_stack(stack*);
 

@@ -3,16 +3,7 @@
 
 #include "lexer.h"
 #include "stack.h"
-
-typedef struct ast_node
-{
-	token* data;
-	struct ast_node** child;
-	int child_count, child_size;
-} syntax_node, * AST;
-
-AST init_ast(token* tkn);
-int add_son(AST ast, token* tkn);
+#include "ast.h"
 
 typedef struct {
 	stack stck;
@@ -25,5 +16,12 @@ typedef struct {
 	error_list err_lst;
 } parser;
 
-void init_slr_tables();
+typedef enum {
+	ACCEPT = 0,
+	SHIFT = 1,
+	ERROR = 2
+} action;
+
+
+void parse(parser* prsr, char* parser_name);
 #endif

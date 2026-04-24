@@ -22,12 +22,18 @@ int main(/*int argc, char* argv[]*/) {
     lxr.input[terminator_index] = '\0';
 
     tokenize(&lxr);
+    if (!err_is_empty(lxr.err_list))
+    {
+        //display error messages
+        print_errors(lxr.err_list);
+    }
+    else 
+    {
+        prsr.input = lxr.data;
+        prsr.input_size = lxr.count;
 
-    prsr.input = lxr.data;
-    prsr.input_size = lxr.count;
-
-    parse(prsr);
-        
+        parse(&prsr, "parser/slr.txt");
+    }
 
 	return 0;
 }

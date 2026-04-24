@@ -26,15 +26,19 @@ void print_error(error_message *msg)
 error_list err_list()
 {
 	error_list lst = (error_list)malloc(sizeof(error_link));
-	lst->msg = NULL;
-	lst->next = lst;
-	lst->prev = lst;
+	if (lst) {
+		lst->msg = NULL;
+		lst->next = lst;
+		lst->prev = lst;
+	}
+	else
+		memory_error();
 	return lst;
 }
 
 int err_is_empty(error_list lst)
 {
-	return lst->msg == NULL;
+	return lst->next->msg == NULL;
 }
 
 void err_append(error_list lst, error_message* msg)
@@ -61,5 +65,6 @@ void print_errors(error_list lst)
 
 void memory_error()
 {
+	printf("memory!");
 	exit(1);
 }

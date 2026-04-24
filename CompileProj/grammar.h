@@ -105,6 +105,7 @@ typedef struct
 	item lhs;
 	item* rhs;
 	int pos, length;
+	int rule_num;
 } item_set, * items_arr;
 
 item_set* rule(item, item*);

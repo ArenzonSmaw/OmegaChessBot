@@ -1,4 +1,5 @@
 #include "stack.h"
+#include "error.h"
 
 stack init_stack()
 {
@@ -11,34 +12,38 @@ int isEmpty(stack s)
 	return s == NULL;
 }
 
-void add_node(item* new_item, stack* old_s)
+
+void push(stack* s, symbol sb, AST ast_node, int stt)
 {
-	stack s = (stack)malloc(sizeof(stack_node));
-	s->next = old_s;
-	s->data = new_item;
-}
-void push(stack* s, item* sb, int stt)
-{
-	if (isEmpty(*s))
-		add_node(sb, NULL);
-	else
-		add_node(sb, s);
+	stack s_node = (stack)malloc(sizeof(stack_node));
+	if (s_node) {
+		s_node->next = s;
+		s_node->data->item = sb;
+		s_node->data->state = stt;
+		s_node->data->node = ast_node;
+		*s = s_node;
+	}
+	else memory_error();
 }
 
 info* pop(stack* s)
 {
-	info* sb = NULL;
+	info* inf = NULL;
 	stack temp;
 	if (!isEmpty(*s))
 	{
-		sb = (*s)->data;
+		inf = (*s)->data;
 		temp = *s;
 		*s = (*s)->next;
 		free(temp);
 	}
-	return sb;
+	return inf;
 }
 
+info* top(stack* s)
+{
+	return (*s)->data;
+}
 void free_stack(stack* s)
 {
 	stack temp;
