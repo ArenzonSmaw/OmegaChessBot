@@ -11,12 +11,59 @@
 
 #define START_STATE 0
 
+#define RULES_NUM 7
 
 items_arr rules;
 int rule_index;
 action** ACTION;
 int** GOTO;
 int states_count;
+
+node_kind TERMINAL_TO_KIND[TERMINALS_COUNT];
+
+void fill_terminal_to_kind()
+{
+	symbol i;
+	for (i = 0; i < KIND_COUNT; i++)
+	{
+		TERMINAL_TO_KIND[i] = -1;
+	}
+	TERMINAL_TO_KIND[ID] = NODE_IDENT;
+	TERMINAL_TO_KIND[UNDERLINE] = NODE_UNDERLINE;
+	for (i = INT_LITERAL; i <= BOOL_LITERAL; i++)
+	{
+		TERMINAL_TO_KIND[i] = NODE_LITERAL;
+	}
+	TERMINAL_TO_KIND[CHR_LITERAL] = NODE_CHAR;
+	TERMINAL_TO_KIND[STR_LITERAL] = NODE_STRING;
+
+	TERMINAL_TO_KIND[PLUS] = NODE_ADD;
+	TERMINAL_TO_KIND[AND] = NODE_BIT_AND;
+	TERMINAL_TO_KIND[ANDAND] = NODE_LOG_AND;
+	TERMINAL_TO_KIND[OR] = NODE_BIT_OR;
+	TERMINAL_TO_KIND[OROR] = NODE_LOG_OR;
+	TERMINAL_TO_KIND[TILDE_OR] = NODE_XOR;
+	TERMINAL_TO_KIND[DBL_EQUALS] = NODE_LOG_EQUAL;
+	TERMINAL_TO_KIND[RIGHT] = NODE_GREAT;
+	TERMINAL_TO_KIND[DBL_RIGHT] = NODE_BIT_RIGHT;
+	TERMINAL_TO_KIND[RIGHT_EQUALS] = NODE_GREAT_EQUAL;
+	TERMINAL_TO_KIND[LEFT] = NODE_LESS;
+	TERMINAL_TO_KIND[DBL_LEFT] = NODE_BIT_LEFT;
+	TERMINAL_TO_KIND[LEFT_EQUALS] = NODE_LESS_EQUAL;
+	TERMINAL_TO_KIND[NOT_EQUALS] = NODE_LOG_DIFFERENT;
+	TERMINAL_TO_KIND[PLUS] = NODE_ADD;
+	TERMINAL_TO_KIND[DBL_PLUS] = NODE_INC_BINARY;
+	TERMINAL_TO_KIND[MINUS] = NODE_SUB;
+	TERMINAL_TO_KIND[DBL_MINUS] = NODE_DEC_BINARY;
+	TERMINAL_TO_KIND[MULT] = NODE_MUL;
+	TERMINAL_TO_KIND[DBL_MULT] = NODE_MAG_BINARY;
+	TERMINAL_TO_KIND[DIVIDE] = NODE_DIV;
+	TERMINAL_TO_KIND[DBL_DIVIDE] = NODE_DIM_BINARY;
+	TERMINAL_TO_KIND[MOD] = NODE_MOD;
+	TERMINAL_TO_KIND[DBL_MOD] = NODE_QUO;
+	TERMINAL_TO_KIND[NOT] = NODE_LOG_NOT;
+	TERMINAL_TO_KIND[NOTNOT] = NODE_BIT_NOT;
+}
 
 void syntax_error(parser* prsr) 
 {
@@ -29,21 +76,22 @@ void syntax_error(parser* prsr)
 void shift(parser* prsr) 
 {
 	token tkn = prsr->input[prsr->index];
-	AST node = init_ast(&(tkn), tkn.type);
+	node_kind kind = TERMINAL_TO_KIND[tkn.type];
+	AST node = create_leaf(tkn, kind);
 	push(prsr->stck, prsr->input[prsr->index].type, prsr->state, node);
 }
 void reduce(parser* prsr, item_set rule) 
 {
 	int i;
-	AST father = init_ast(NULL, rule.lhs.symbol);
+	AST father = init_ast(NULL, TERMINAL_TO_KIND[rule.lhs.symbol], rule.length);
 	info data;
 	alloc_children(father, rule.length);
 
 	for (i = rule.length -1; i >= 0; i--)
 	{
 		data = *(pop(prsr->stck));
-		father->child[i] = data.node;
-		father->child_count++;
+		father->children[i] = data.node;
+		father->children_count++;
 	}
 
 	push(prsr->stck, rule.lhs.symbol, father, GOTO[rule.lhs.symbol][top(prsr->stck)->state]);
@@ -69,7 +117,6 @@ void add_rule(item lhs, item rhs[], int length)
 	rule_index++;
 }
 
-#define RULES_NUM 74
 void fill_rules_arr()
 {
 	const item
@@ -149,7 +196,7 @@ void fill_rules_arr()
 		excp = {EXCEPTION, TERMINAL },
 		grammar_start = {S_TAG, NON_TERMINAL}
 	;
-	{
+	/*{
 		init_rules_arr(RULES_NUM);
 		add_rule(grammar_start, (item[1]) { prgrm }, 1);
 		add_rule(literal, (item[1]) { bool_lit }, 1);
@@ -224,15 +271,24 @@ void fill_rules_arr()
 		add_rule(stmt, (item[3]) { decl, id, semcol }, 3);
 		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);
 		add_rule(prgrm, (item[1]) { stmt_list }, 1);
-	}
+	}*/
+		init_rules_arr(7);
+		add_rule(grammar_start, (item[]) { stmt }, 1);
+		add_rule(stmt, (item[]) { expr, semcol }, 2);
+		add_rule(expr, (item[]) { expr, mult, term }, 3);
+		add_rule(expr, (item[]) { term }, 1);
+		add_rule(term, (item[]) { term, plus, factor }, 3);
+		add_rule(term, (item[]) { factor }, 1);
+		add_rule(factor, (item[]) { int_lit }, 1);
 }
 
 void create_slr(FILE* fp)
 {
 	int i, j;
-	states_count = generate(rules, RULES_NUM);
+	states_count = generate(rules, RULES_NUM, &GOTO, &ACTION);
 
-	fprintf(fp, "%d \n", states_count);
+
+	fprintf(fp, "%d %s\n", states_count, SYMBOLS_COUNT);
 	//save goto table to file
 	for (i = 0; i < states_count; i++)
 	{
@@ -245,7 +301,7 @@ void create_slr(FILE* fp)
 	//save action table to file
 	for (i = 0; i < states_count; i++)
 	{
-		for (j = 0; j < SYMBOLS_COUNT; j++)
+		for (j = 0; j < TERMINALS_COUNT; j++)
 		{
 			fprintf(fp, "%d ", ACTION[j][i]);
 		}
@@ -265,21 +321,22 @@ void load_slr(FILE* fp)
 		fill_rules_arr();
 		create_slr(fp);
 	}
-
-	//load goto table
-	for (i = 0; i < states_count; i++)
-	{
-		for (j = 0; j < SYMBOLS_COUNT; j++)
+	else {
+		//load goto table
+		for (i = 0; i < states_count; i++)
 		{
-			fscanf(fp, "%d ", &(GOTO[j][i]));
+			for (j = 0; j < SYMBOLS_COUNT; j++)
+			{
+				fscanf(fp, "%d ", &(GOTO[j][i]));
+			}
 		}
-	}
-	//load action table
-	for (i = 0; i < states_count; i++)
-	{
-		for (j = 0; j < SYMBOLS_COUNT; j++)
+		//load action table
+		for (i = 0; i < states_count; i++)
 		{
-			fscanf(fp, "%d", &(ACTION[j][i]));
+			for (j = 0; j < SYMBOLS_COUNT; j++)
+			{
+				fscanf(fp, "%d", &(ACTION[j][i]));
+			}
 		}
 	}
 	fclose(fp);
@@ -307,6 +364,7 @@ void parse(parser* prsr, char* parser_name)
 
 	prsr->stck = init_stack();
 	prsr->err_lst = err_list();
+	prsr->index = 0;
 
 	do
 	{

@@ -905,10 +905,11 @@ void tokenize(lexer *lxr)
 
 		action(lxr);
 	}
+	end_token(lxr);
 	if (lxr->size == lxr->count)
 	{
 		lxr->data = (token*)realloc(lxr->data, (lxr->count+1) * sizeof(token));
 		if (lxr->data == NULL) memory_error();
 	}
-	lxr->data[lxr->count] = (token){ "$", 0, END_TOKEN, lxr->line, lxr->col };
+	lxr->data[lxr->count++] = (token){ "$", 0, END_TOKEN, lxr->line, lxr->col };
 }

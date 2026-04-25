@@ -5,7 +5,7 @@
 int main(/*int argc, char* argv[]*/) {
 
 	//FILE* inp_file = fopen(argv[1], "r"); 
-    FILE* inp_file = fopen("textexamples/inputexample1.txt", "r");
+    FILE* inp_file = fopen("textexamples/littleexample.txt", "r");
 	lexer lxr;
     parser prsr;
     char* lexeme;

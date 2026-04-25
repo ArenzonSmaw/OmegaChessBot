@@ -8,7 +8,7 @@ typedef struct
 
 typedef struct {
 	int** GOTO;
-	action** ACTION;
+	int** ACTION;
 	int states_count;
 } generator;
 
@@ -19,34 +19,43 @@ int next_state;
 int FIRST[SYMBOLS_COUNT - TERMINALS_COUNT][TERMINALS_COUNT];
 int FOLLOW[SYMBOLS_COUNT - TERMINALS_COUNT][TERMINALS_COUNT];
 
-void alloc_tables(action*** ACTION, int*** GOTO)
+void alloc_tables(int*** ACTION, int*** GOTO)
 {
 	//allocate dynamically a symbols_count X 10 goto and action tables
 
 	int i, j;
 	gnrtr.states_count = 20;
 	next_state = 1;
+	gnrtr.ACTION = *ACTION;
+	gnrtr.GOTO = *GOTO;
 
-	*ACTION = (action**)malloc(SYMBOLS_COUNT * sizeof(action*));
 	states = (state*)malloc(gnrtr.states_count * sizeof(state));
-	*GOTO = (int**)malloc(SYMBOLS_COUNT * sizeof(int*));
+	gnrtr.ACTION = (int**)malloc(TERMINALS_COUNT * sizeof(int*));
+	gnrtr.GOTO = (int**)malloc(SYMBOLS_COUNT * sizeof(int*));
 
-	if (*ACTION == NULL || *GOTO == NULL || states == NULL)
+	if (gnrtr.ACTION == NULL || gnrtr.GOTO == NULL || states == NULL)
 	{
 		memory_error();
 	}
-
-	for (i = 0; i < SYMBOLS_COUNT; i++)
+	for (i = 0; i < TERMINALS_COUNT; i++)
 	{
-		(*ACTION)[i] = (action*)malloc(gnrtr.states_count * sizeof(action));
-		(*GOTO)[i] = (int*)malloc(gnrtr.states_count * sizeof(int));
-
-		if ((*ACTION)[i] == NULL || (*GOTO)[i] == NULL)
+		gnrtr.ACTION[i] = (int*)malloc(gnrtr.states_count * sizeof(int));
+		if (gnrtr.ACTION[i] == NULL)
 			memory_error();
 		for (j = 0; j < gnrtr.states_count; j++)
 		{
-			(*ACTION)[i][j] = ERROR;
-			(*GOTO)[i][j] = -1;
+			gnrtr.ACTION[i][j] = ERROR;
+		}
+	}
+	for (i = 0; i < SYMBOLS_COUNT; i++)
+	{
+		gnrtr.GOTO[i] = (int*)malloc(gnrtr.states_count * sizeof(int));
+
+		if (gnrtr.GOTO[i] == NULL)
+			memory_error();
+		for (j = 0; j < gnrtr.states_count; j++)
+		{
+			gnrtr.GOTO[i][j] = -1;
 		}
 	}
 
@@ -64,8 +73,6 @@ void alloc_tables(action*** ACTION, int*** GOTO)
 			FOLLOW[i][j] = 0;
 		}
 	}
-	gnrtr.ACTION = *ACTION;
-	gnrtr.GOTO = *GOTO;
 }
 void expand()
 {
@@ -73,47 +80,50 @@ void expand()
 	int i, j;
 	int states_add = (gnrtr.states_count >= 80) ? 50 : gnrtr.states_count;
 	
-	for (i = 0; i < SYMBOLS_COUNT; i++)
+	for (i = 0; i < TERMINALS_COUNT; i++)
 	{
-		gnrtr.ACTION[i] = (action*)realloc(gnrtr.ACTION[i], (gnrtr.states_count + states_add) * sizeof(action));
-		gnrtr.GOTO[i] = (int*)realloc(gnrtr.GOTO[i], (gnrtr.states_count + states_add) * sizeof(int));
-		if (gnrtr.GOTO[i] == NULL || gnrtr.ACTION[i] == NULL)
+		gnrtr.ACTION[i] = (int*)realloc(gnrtr.ACTION[i], (gnrtr.states_count + states_add) * sizeof(int));
+		if (gnrtr.ACTION[i] == NULL)
 			memory_error();
-		gnrtr.states_count += states_add;
-		for (j = gnrtr.states_count; j < states_add; j++)
+		for (j = 0; j < gnrtr.states_count; j++)
 		{
 			gnrtr.ACTION[i][j] = ERROR;
+		}
+	}
+	for (i = 0; i < SYMBOLS_COUNT; i++)
+	{
+		gnrtr.GOTO[i] = (int*)realloc(gnrtr.GOTO[i], (gnrtr.states_count + states_add) * sizeof(int));
+		if (gnrtr.GOTO[i] == NULL)
+			memory_error();
+		for (j = gnrtr.states_count; j < gnrtr.states_count+states_add; j++)
+		{
 			gnrtr.GOTO[i][j] = -1;
 		}
-		gnrtr.states_count = states_add;
 	}
+	states = (state*)realloc(states, (gnrtr.states_count + states_add) * sizeof(state));
+	for (i = gnrtr.states_count; i < gnrtr.states_count + states_add; i++)
+	{
+		states[i].items = NULL;
+		states[i].count = 0;
+	}
+	gnrtr.states_count += states_add;
 }
 
 int rules_isEqual(item_set rule1, item_set rule2)
 {
-	int equal = 0, dot;
-	if (rule1.lhs.symbol != rule2.lhs.symbol || rule1.length != rule2.length || rule1.pos != rule2.pos)
-	{
-		return 0;
-	}
-	equal = 1;
-	for (dot = 0; dot + rule1.pos < rule1.length; dot++)
-	{
-		if (rule1.rhs[dot].symbol != rule2.rhs[dot].symbol)
-			equal = 0;
-	}
-	
-	return equal;
+	return rule1.rule_num == rule2.rule_num && rule1.pos == rule2.pos;
 }
 int sets_isEqual(items_arr set1, int size1, items_arr set2, int size2)
 {
-	int idx, jdx;
+	int idx, jdx, found;
 	if (size1 != size2) return 0;
 	for (idx = 0; idx < size1; idx++)
 	{
-		for (jdx = 0; jdx < size2; jdx++)
-			if (!rules_isEqual(set1[idx], set2[jdx]))
-			return 0;
+		found = 0;
+		for (jdx = 0; jdx < size2 && !found; jdx++)
+			if (rules_isEqual(set1[idx], set2[jdx]))
+				found = 1;
+		if (!found) return 0;
 	}
 	return 1;
 }
@@ -135,6 +145,7 @@ int add_to_set(items_arr* arr, item_set set, int* arr_size, int* arr_count)
 			*arr = (items_arr)malloc(5 * sizeof(item_set));
 			
 			*arr_size = 5;
+			*arr_count = 0;
 		}
 		else if (*arr_count >= *arr_size)
 		{
@@ -174,13 +185,17 @@ void closure(items_arr* set, int* set_size, int* set_count, items_arr rules, int
 	}
 }
 
-int get_state_index(items_arr set, int set_size)
+int get_state_index(items_arr set, int set_size, int *is_new)
 {
 	int stt;
+	*is_new = 1;
 	for (stt = 0; stt < next_state; stt++)
 	{
 		if (sets_isEqual(states[stt].items, states[stt].count, set, set_size))
+		{
+			*is_new = 0;
 			return stt;
+		}
 	}
 
 	if (gnrtr.states_count == next_state)
@@ -197,11 +212,11 @@ int calc_goto(int curr_state, symbol X, items_arr rules, int rules_count)
 	int set_size = 0, set_count = 0;
 	item_set curr_rule;
 	int next_state;
-	int i;
+	int i, is_new;
 
-	if (gnrtr.GOTO[X][curr_state] != -1)
+	if ((gnrtr.GOTO)[X][curr_state] != -1)
 	{
-		return gnrtr.GOTO[X][curr_state];
+		return (gnrtr.GOTO)[X][curr_state];
 	}
 	for (i = 0; i < states[curr_state].count; i++)
 	{
@@ -214,7 +229,9 @@ int calc_goto(int curr_state, symbol X, items_arr rules, int rules_count)
 	}
 	if (set_size == 0) return -1;
 	closure(&rule_set, &set_size, &set_count, rules, rules_count);
-	next_state = get_state_index(rule_set, set_size);
+	next_state = get_state_index(rule_set, set_count, &is_new);
+	if (!is_new)
+		free(rule_set);
 	gnrtr.GOTO[X][curr_state] = next_state;
 	return next_state;
 }
@@ -223,8 +240,9 @@ void build_states(items_arr arr, int arr_size)
 {
 	item_set start = arr[0];
 	int state = 0;
-	items_arr rule_set = (items_arr)malloc(sizeof(item_set));
-	int set_size = 1, set_count;
+	items_arr rule_set = (items_arr)malloc(arr_size*sizeof(item_set));
+	if (!rule_set) memory_error();
+	int set_size = arr_size, set_count = 0;
 
 	item_set rule;
 	int state_index;
@@ -232,14 +250,13 @@ void build_states(items_arr arr, int arr_size)
 
 	start.pos = 0;
 	rule_set[0] = start;
-	set_count = 1;
+	set_count++;
 
 	closure(&rule_set, &set_size, &set_count, arr, arr_size);
 
 
 	states[0].items = rule_set;
 	states[0].count = set_size;
-	next_state = 1;
 
 	for (state_index = 0; state_index < next_state; state_index++)
 	{
@@ -250,7 +267,7 @@ void build_states(items_arr arr, int arr_size)
 				calc_goto(state_index, rule.rhs[rule.pos].symbol, arr, arr_size);
 		}
 	}
-	free(rule_set);
+
 }
 
 void fill_first(items_arr rules, int count)
@@ -355,7 +372,7 @@ void fill_state_action(int state_num)
 	for (item_idx = 0; item_idx < stt.count; item_idx++)
 	{
 		itm = stt.items[item_idx];
-		if (itm.pos >= itm.length)
+		if (itm.lhs.symbol >= 0 && itm.pos >= itm.length)
 		{
 			for (sym_idx = 0; sym_idx < TERMINALS_COUNT; sym_idx++)
 			{
@@ -363,12 +380,13 @@ void fill_state_action(int state_num)
 					gnrtr.ACTION[sym_idx][state_num] = itm.rule_num;
 			}
 		}
-		if (itm.rhs[itm.pos].isTerminal)
+		if (itm.pos < itm.length && itm.rhs[itm.pos].isTerminal)
 		{
-			gnrtr.ACTION[itm.rhs[itm.pos + 1].symbol][state_num] = SHIFT;
+			gnrtr.ACTION[itm.rhs[itm.pos].symbol][state_num] = SHIFT;
 		}
 	}
 }
+
 void fill_action(items_arr rules, int count)
 {
 	fill_first(rules, count);
@@ -379,12 +397,32 @@ void fill_action(items_arr rules, int count)
 		fill_state_action(state_idx);
 	}
 }
+void free_states()
+{
+	int i;
+	for (i = 0; i < next_state; i++)
+	{
+		if (states[i].items)
+		{
+			free(states[i].items);
+			states[i].items = NULL;
+		}
+	}
+}
+void apply_tables(int*** goto_tbl, int*** action_tbl)
+{
+	*goto_tbl = gnrtr.GOTO;
+	*action_tbl = gnrtr.ACTION;
+}
+
 
 int generate(items_arr rules, int rule_count, int*** goto_tbl, int*** action_tbl)
 {
 	alloc_tables(action_tbl, goto_tbl);
 	build_states(rules, rule_count);
 	fill_action(rules, rule_count);
+	apply_tables(goto_tbl, action_tbl);
+	free_states();
 
-	return gnrtr.states_count;
+	return next_state;
 }

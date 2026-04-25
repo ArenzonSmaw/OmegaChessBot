@@ -10,7 +10,7 @@ typedef enum
 {
 	VARIABLE,
 	CONSTANT,
-	PARAMETER,
+	PARAM,
 	FUNCTION,
 	LABEL
 } semantic_kind;
@@ -39,33 +39,39 @@ typedef struct symbol_node {
 
 	struct symbol_node* next;
 
-} symbol_link, *symbol;
+} symbol_link;
 
 typedef struct scope_node {
-	symbol table[TABLE_ROWS];
+	symbol_link *table[TABLE_ROWS];
 	struct scope_node* parent;
 	int level;
 
 } scope_node, *scope;
 
 typedef struct {
-	scope* current_scope;
+	AST ast;
+	scope current_scope;
 	int current_scope_level;
 	int current_offset;
 	error_list error;
 } semanticer;
 
-symbol create_symbol(char* name, semantic_kind, semantic_type);
+void init_semanticer(semanticer*);
+
+symbol_link* create_symbol(char* name, semantic_kind, semantic_type, int param_count);
 void enter_symbol(scope, symbol);
-symbol extract_symbol(scope, char* name);
+symbol_link* get_symbol(scope, char* name);
+symbol_link* extract_symbol(scope, char* name);
 int symbol_exist(scope, char* name);
 
 
 scope init_scope(int level, scope parent);
 int hash(char* symbolname);
 
-void enter_scope(semanticer, int scope);
+int enter_scope(semanticer);
 
 void exit_scope(semanticer);
+
+void semanticize(semanticer*);
 
 #endif

@@ -4,6 +4,6 @@
 #include <stdlib.h>
 #include "parser.h"
 
-int generate(items_arr, int);
+int generate(items_arr, int, int*** GOTO, int*** ACTION);
 
 #endif
