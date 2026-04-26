@@ -1,6 +1,18 @@
 #include "ast.h"
 #include <stdlib.h>
 
+void fill_kind_to_data()
+{
+	//fills global array of data_type enum by node_kind enum
+	int i;
+	for (i = 0; i < KIND_COUNT; i++)
+	{
+		//initialize with default 'none' value
+		KIND_TO_DATA[i] = NONE;
+	}
+	KIND_TO_DATA[NODE_LITERAL] = KIND_TO_DATA[NODE_UNDERLINE] = NUM;
+	KIND_TO_DATA[NODE_IDENT] = NAME;
+}
 
 AST init_ast(token* tkn, node_kind kind, int children)
 {
@@ -27,7 +39,7 @@ AST create_leaf(token* tkn, node_kind kind)
 	{
 		ast->line = tkn->line;
 		ast->col = tkn->col;
-
+		ast->type = dattype;
 
 		if (dattype == NUM)
 			ast->data.value = tkn->value;
@@ -44,6 +56,7 @@ void alloc_children(AST ast, int children)
 	int i;
 	if (ast->children != NULL)
 		free(ast->children);
+	ast->children = NULL;
 	ast->children = (AST*)malloc(children * sizeof(AST));
 	if (!ast->children) memory_error();
 	ast->children_size = children;

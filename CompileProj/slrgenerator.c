@@ -73,6 +73,8 @@ void alloc_tables(int*** ACTION, int*** GOTO)
 			FOLLOW[i][j] = 0;
 		}
 	}
+	*ACTION = gnrtr.ACTION;
+	*GOTO = gnrtr.GOTO;
 }
 void expand()
 {
@@ -231,7 +233,10 @@ int calc_goto(int curr_state, symbol X, items_arr rules, int rules_count)
 	closure(&rule_set, &set_size, &set_count, rules, rules_count);
 	next_state = get_state_index(rule_set, set_count, &is_new);
 	if (!is_new)
+	{
 		free(rule_set);
+		rule_set = NULL;
+	}
 	gnrtr.GOTO[X][curr_state] = next_state;
 	return next_state;
 }
@@ -253,10 +258,20 @@ void build_states(items_arr arr, int arr_size)
 	set_count++;
 
 	closure(&rule_set, &set_size, &set_count, arr, arr_size);
-
+	int j;
+	for (int i = 0; i < 73; i++)
+	{
+		for (j = 0; j < set_count; j++)
+		{
+			if (rule_set[j].rule_num == -1 * i - 1)
+				break;
+		}
+		if (j == set_count)
+			printf("%d\n", i);
+	}
 
 	states[0].items = rule_set;
-	states[0].count = set_size;
+	states[0].count = set_count;
 
 	for (state_index = 0; state_index < next_state; state_index++)
 	{
@@ -285,18 +300,18 @@ void fill_first(items_arr rules, int count)
 			item = rules[index];
 			l = item.lhs.symbol;
 			r = item.rhs[0].symbol;
-			if (item.rhs[0].isTerminal && FIRST[l][r] == 0)
+			if (r < TERMINALS_COUNT && FIRST[l-TERMINALS_COUNT-1][r] == 0)
 			{
-				FIRST[l][item.rhs[0].symbol] = 1;
+				FIRST[l-TERMINALS_COUNT-1][r] = 1;
 				changed = 1;
 			}
-			else if (!item.rhs[0].isTerminal)
+			else if (r > TERMINALS_COUNT)
 			{
 				for (temp = 0; temp < TERMINALS_COUNT; temp++)
 				{
-					if (FIRST[r][temp] && !FIRST[l][temp])
+					if (FIRST[r-TERMINALS_COUNT-1][temp] && !FIRST[l-TERMINALS_COUNT-1][temp])
 					{
-						FIRST[l][temp] = 1;
+						FIRST[l-TERMINALS_COUNT-1][temp] = 1;
 						changed = 1;
 					}
 				}
@@ -304,13 +319,15 @@ void fill_first(items_arr rules, int count)
 		}
 	}
 }
+
+
 void fill_follow(items_arr rules, int count)
 {
 	int changed = 1;
 	int dot, index, i;
 	item_set rule;
 	symbol A, B;
-	FOLLOW[S_TAG][END_TOKEN] = 1;
+	FOLLOW[S_TAG-TERMINALS_COUNT-1][END_TOKEN] = 1;
 	while (changed) {
 		changed = 0;
 		for (index = 0; index < count; index++)
@@ -326,9 +343,9 @@ void fill_follow(items_arr rules, int count)
 					{
 						if (rule.rhs[dot + 1].isTerminal)
 						{
-							if (!FOLLOW[A][rule.rhs[dot + 1].symbol])
+							if (FOLLOW[A-TERMINALS_COUNT-1][rule.rhs[dot + 1].symbol] == 0)
 							{
-								FOLLOW[A][rule.rhs[dot + 1].symbol] = 1;
+								FOLLOW[A-TERMINALS_COUNT-1][rule.rhs[dot + 1].symbol] = 1;
 								changed = 1;
 							}
 						}
@@ -337,9 +354,9 @@ void fill_follow(items_arr rules, int count)
 							B = rule.rhs[dot + 1].symbol;
 							for (i = 0; i < TERMINALS_COUNT; i++)
 							{
-								if (FIRST[B][i] && !FOLLOW[A][i])
+								if (FIRST[B-TERMINALS_COUNT-1][i] && !FOLLOW[A-TERMINALS_COUNT-1][i])
 								{
-									FOLLOW[A][i] = 1;
+									FOLLOW[A-TERMINALS_COUNT-1][i] = 1;
 									changed = 1;
 								}
 							}
@@ -349,9 +366,9 @@ void fill_follow(items_arr rules, int count)
 					{
 						for (i = 0; i < TERMINALS_COUNT; i++)
 						{
-							if (!FOLLOW[A][i] && FOLLOW[rule.lhs.symbol][i])
+							if (FOLLOW[A-TERMINALS_COUNT-1][i] == 0 && FOLLOW[rule.lhs.symbol-TERMINALS_COUNT-1][i] == 1)
 							{
-								FOLLOW[A][i] = 1;
+								FOLLOW[A-TERMINALS_COUNT-1][i] = 1;
 								changed = 1;
 							}
 						}
@@ -372,12 +389,14 @@ void fill_state_action(int state_num)
 	for (item_idx = 0; item_idx < stt.count; item_idx++)
 	{
 		itm = stt.items[item_idx];
-		if (itm.lhs.symbol >= 0 && itm.pos >= itm.length)
+		if (itm.pos >= itm.length)
 		{
 			for (sym_idx = 0; sym_idx < TERMINALS_COUNT; sym_idx++)
 			{
-				if (FOLLOW[itm.lhs.symbol][sym_idx])
+				if (FOLLOW[itm.lhs.symbol - TERMINALS_COUNT - 1][sym_idx])
+				{
 					gnrtr.ACTION[sym_idx][state_num] = itm.rule_num;
+				}
 			}
 		}
 		if (itm.pos < itm.length && itm.rhs[itm.pos].isTerminal)
@@ -389,9 +408,9 @@ void fill_state_action(int state_num)
 
 void fill_action(items_arr rules, int count)
 {
+	int state_idx;
 	fill_first(rules, count);
 	fill_follow(rules, count);
-	int state_idx;
 	for (state_idx = 0; state_idx < next_state; state_idx++)
 	{
 		fill_state_action(state_idx);
@@ -408,6 +427,8 @@ void free_states()
 			states[i].items = NULL;
 		}
 	}
+	free(states);
+	states = NULL;
 }
 void apply_tables(int*** goto_tbl, int*** action_tbl)
 {

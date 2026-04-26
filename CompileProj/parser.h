@@ -17,6 +17,7 @@ typedef struct {
 } parser;
 
 typedef enum {
+	REDUCE = -1,
 	ACCEPT = 0,
 	SHIFT = 1,
 	ERROR = 2

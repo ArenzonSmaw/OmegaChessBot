@@ -84,18 +84,8 @@ typedef enum {
 	NONE = 3
 }data_type;
 
-data_type KIND_TO_DATA[KIND_COUNT] = { 0 };
-void fill_kind_to_data()
-{
-	int i;
-	for (i = 0; i < KIND_COUNT; i++)
-	{
-		//initialize with default 'none' value
-		KIND_TO_DATA[i] = NONE;
-	}
-	KIND_TO_DATA[NODE_LITERAL] = KIND_TO_DATA[NODE_UNDERLINE] = NUM;
-	KIND_TO_DATA[NODE_IDENT] = NAME;
-}
+data_type KIND_TO_DATA[KIND_COUNT];
+void fill_kind_to_data();
 
 
 typedef struct ast_node
@@ -115,11 +105,39 @@ typedef struct ast_node
 
 
 AST init_ast(token* tkn, node_kind kind, int children);
+/*
+	GETS:		pointer to token tkn, semantic kind, and number of children to allocate
+	RETURNS:	pointer to ast node, initialized with token value, kind and allocated children array
+*/
+
 AST create_leaf(token*, node_kind kind);
+/*
+	GETS:		pointer to token tkn and semantic kind
+	RETURN:		pointer to ast node, with initialized token value and kind, and children array initialized to NULL
+*/
+
 void alloc_children(AST ast, int children);
+/*
+	GETS:		pointer to ast node and number of children to allocate
+	RETURNS:	funtion allocates the children array. if ast->children is not NULL, it frees the array and allocates with desired size
+*/
 void realloc_children(AST ast, int children);
+/*
+	GETS:		pointer to ast node and number of children to reallocate to
+	RETURNS:	reallocates the children array to desired size.
+*/
+
 int insert_son(AST ast, AST son, int index);
+/*
+	GETS:		pointer to father node, son node and desired index in the children array.
+	RETURNS:	if ast->children[index] is available, assign son node and return 1. else, return 0
+*/
+
 int add_son(AST ast, AST son);
-void alloc_children(AST ast, int children);
+/*
+	GETS:		pointer to father node and son node.
+	RETURNS		finds available cell in children array. if not found, reallocates to array size +1 and assigns son node.
+*/
+
 
 #endif

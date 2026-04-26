@@ -85,7 +85,7 @@ void init_dispatch_table()
 	HANDLE_DISPATCH[NODE_ASSIGNMENT] = assignment_handler;
 
 	HANDLE_DISPATCH[NODE_IF] = if_handler;
-	HANDLE_DISPATCH[NODE_WHILE] = while_handler;
+	HANDLE_DISPATCH[NODE_LOOP] = while_handler;
 	HANDLE_DISPATCH[NODE_RETURN] = return_handler;
 	HANDLE_DISPATCH[NODE_BREAK] = break_handler;
 	HANDLE_DISPATCH[NODE_PASS] = pass_handler;

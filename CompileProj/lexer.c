@@ -189,6 +189,8 @@ void start_token(lexer* lxr)
 		tkn = &(lxr->data[lxr->count]);
 		tkn->type = ID;
 		strcpy(tkn->lexeme, (char[2]) { lxr->input[(lxr->index)++], '\0' });
+		tkn->line = lxr->line;
+		tkn->col = lxr->col;
 	}
 }
 void start_integer(lexer* lxr)
@@ -196,6 +198,8 @@ void start_integer(lexer* lxr)
 	//Starts new token for integer type
 	start_token(lxr);
 	lxr->data[lxr->count].type = INT_LITERAL;
+	lxr->data[lxr->count].line = lxr->line;
+	lxr->data[lxr->count].col = lxr->col;
 }
 void add_char(lexer* lxr)
 {
@@ -268,6 +272,8 @@ void start_char(lexer* lxr)
 	//starts new token of char type
 	start_token(lxr);
 	lxr->data[lxr->count].type = CHR_LITERAL;
+	lxr->data[lxr->count].line = lxr->line;
+	lxr->data[lxr->count].col = lxr->col;
 }
 void end_char(lexer* lxr)
 {
@@ -280,6 +286,8 @@ void start_string(lexer* lxr)
 	//starts new token of string type
 	start_token(lxr);
 	lxr->data[lxr->count].type = STR_LITERAL;
+	lxr->data[lxr->count].line = lxr->line;
+	lxr->data[lxr->count].col = lxr->col;
 }
 void end_string(lexer* lxr)
 {
@@ -316,7 +324,7 @@ void end_token(lexer* lxr)
 	end_method[STR_LITERAL] = expected_error;
 
 	tkn_type = lxr->data[lxr->count].type;
-	method = end_method[lxr->data[lxr->count].type];
+	method = end_method[tkn_type];
 	if (method == ignore)
 		lxr->count++;
 	else {
@@ -332,6 +340,8 @@ void start_controlflow(lexer* lxr)
 
 	start_token(lxr);
 	lxr->data[lxr->count].type = cf_types[CHAR_CLASS[lxr->input[lxr->index - 1]] - CH_COMMA];
+	lxr->data[lxr->count].line = lxr->line;
+	lxr->data[lxr->count].col = lxr->col;
 	lxr->count++;
 }
 void add_controlflow(lexer* lxr)
@@ -389,6 +399,8 @@ void start_operator(lexer* lxr)
 	start_token(lxr);
 	INPUT ch = CHAR_CLASS[lxr->input[lxr->index-1]];
 	lxr->data[lxr->count].type = operators[ch - CH_PLUS];
+	lxr->data[lxr->count].line = lxr->line;
+	lxr->data[lxr->count].col = lxr->col;
 	lxr->count++;
 }
 void end_token_start_operator(lexer* lxr)
@@ -889,7 +901,7 @@ void tokenize(lexer *lxr)
 	lxr->data = malloc(2 * sizeof(token));
 	lxr->size = 2;
 	lxr->count = 0;
-	lxr->line = lxr->col = 0;
+	lxr->line = lxr->col = 1;
 
 	lxr->err_list = err_list();
 
@@ -904,8 +916,16 @@ void tokenize(lexer *lxr)
 		state = GOTO[state][ch_class];
 
 		action(lxr);
+		if (input[index] == '\n')
+		{
+			lxr->col = 1;
+			lxr->line++;
+		}
+		else
+			lxr->col++;
 	}
-	end_token(lxr);
+	if (state != 0)
+		end_token(lxr);
 	if (lxr->size == lxr->count)
 	{
 		lxr->data = (token*)realloc(lxr->data, (lxr->count+1) * sizeof(token));

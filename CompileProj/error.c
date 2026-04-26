@@ -8,7 +8,7 @@ error_message* error(char title[21], char message[32], int line, int col)
 	if (er != NULL)
 	{
 		strcpy(er->error_title, title);
-		strcpy(er->error_message, title);
+		strcpy(er->error_message, message);
 		er->line = line;
 		er->col = col;
 	}
