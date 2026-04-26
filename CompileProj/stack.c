@@ -13,13 +13,13 @@ int isEmpty(stack s)
 }
 
 
-void push(stack* s, symbol sb, AST ast_node, int stt)
+void push(stack* s, token* tkn, AST ast_node, int stt)
 {
 	stack s_node = (stack)malloc(sizeof(stack_node));
 	if (s_node == NULL) memory_error();
 	if (s_node) {
 		s_node->next = s;
-		s_node->data->item = sb;
+		s_node->data->tkn = tkn;
 		s_node->data->state = stt;
 		s_node->data->node = ast_node;
 		*s = s_node;

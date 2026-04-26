@@ -6,7 +6,7 @@
 #include "ast.h"
 
 typedef struct {
-	symbol item;
+	token* tkn;
 	AST node;
 	int state;
 }info;
@@ -19,7 +19,7 @@ typedef struct stack_node
 } stack_node, *stack;
 
 stack init_stack();
-void push(stack*, symbol symbol, AST node, int state);
+void push(stack*, token* tkn, AST node, int state);
 info* pop(stack*);
 info* top(stack*);
 int isEmpty(stack);

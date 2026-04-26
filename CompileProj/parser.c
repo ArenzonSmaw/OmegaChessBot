@@ -65,6 +65,12 @@ void fill_terminal_to_kind()
 	TERMINAL_TO_KIND[NOTNOT] = NODE_BIT_NOT;
 }
 
+void free_all(info* ptr)
+{
+	free(ptr->node);
+	free(ptr->tkn);
+	free(ptr);
+}
 void syntax_error(parser* prsr) 
 {
 	token tkn = prsr->input[prsr->index];
@@ -75,11 +81,512 @@ void syntax_error(parser* prsr)
 }
 void shift(parser* prsr) 
 {
-	token tkn = prsr->input[prsr->index];
-	node_kind kind = TERMINAL_TO_KIND[tkn.type];
-	AST node = create_leaf(tkn, kind);
-	push(prsr->stck, prsr->input[prsr->index].type, prsr->state, node);
+	token* tkn = &(prsr->input[prsr->index]);
+	node_kind kind = TERMINAL_TO_KIND[tkn->type];
+	AST node = create_leaf(&tkn, kind);
+	push(&(prsr->stck), tkn, prsr->state, node);
+	prsr->index++;
 }
+
+void reduce_parenthesized_expr(parser* prsr)
+{
+	info* opened_bracket, * closed_bracket, * expr;
+	int prev_state;
+	closed_bracket = pop(&(prsr->stck));
+	expr = pop(&(prsr->stck));
+	opened_bracket = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	prsr->state = GOTO[FACTOR][prev_state];
+	push(&(prsr->stck), expr->tkn, expr->node, prsr->state);
+
+
+	free_all(closed_bracket);
+	free_all(opened_bracket);
+	free(expr);
+}
+void reduce_function_call(parser* prsr)
+{
+	info* cl_bracket, * exprs, * op_bracket, * id;
+	int prev_state;
+	AST node;
+	cl_bracket = pop(&(prsr->stck));
+	exprs = pop(&(prsr->stck));
+	op_bracket = pop(&(prsr->stck));
+	id = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+	
+	node = init_ast(NULL, NODE_FUNC_CALL, 2);
+	insert_son(node, id, 0);
+	insert_son(node, exprs, 1);
+
+	prsr->state = GOTO[FACTOR][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free_all(cl_bracket);
+	free_all(op_bracket);
+	free(id);
+	free(exprs);
+}
+void reduce_cast(parser* prsr)
+{
+	info* factor, * r_col, * type, * l_col;
+	int prev_state;
+	AST node;
+	factor = pop(&(prsr->stck));
+	r_col = pop(&(prsr->stck));
+	type = pop(&(prsr->stck));
+	l_col = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	node = init_ast(NULL, NODE_TYPE_CAST, 2);
+	insert_son(node, type, 0);
+	insert_son(node, factor, 1);
+
+	prsr->state = GOTO[FACTOR][prev_state];
+
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free_all(r_col);
+	free_all(l_col);
+	free(type);
+	free(factor);
+}
+void reduce_prefix_arith(parser* prsr)
+{
+	info* factor, * operator;
+	int prev_state;
+	factor = pop(&(prsr->stck));
+	operator = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	alloc_children(operator->node, 1);
+	add_son(operator->node, factor->node);
+	prsr->state = GOTO[FACTOR][prev_state];
+	push(&(prsr->stck), operator->tkn, operator->node, prsr->state);
+
+	free(factor);
+	free(operator);
+}
+void reduce_postfix_arith(parser* prsr)
+{
+	info* operator,* factor;
+	int prev_state;
+	operator = pop(&(prsr->stck));
+	factor = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	alloc_children(operator->node, 1);
+	add_son(operator->node, factor->node);
+
+	prsr->state = GOTO[FACTOR][prev_state];
+	push(&(prsr->stck), operator->tkn, operator->node, prsr->state);
+
+	free(factor);
+	free(operator);
+}
+void reduce_basic_rec_case(parser* prsr)
+{
+	info* lhs = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	prsr->state = GOTO[lhs->tkn->type][prev_state];
+	push(&(prsr->stck), lhs->tkn, lhs->node, prsr->state);
+
+	free(lhs);
+}
+void reduce_binary(parser* prsr)
+{
+	info* opnd1, * opnd2, * oprt;
+	int prev_state;
+	opnd2 = pop(&(prsr->stck));
+	oprt = pop(&(prsr->stck));
+	opnd1 = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	alloc_children(oprt->node, 2);
+	insert_son(oprt->node, opnd1->node, 0);
+	insert_son(oprt->node, opnd2->node, 1);
+
+	prsr->state = GOTO[EXPRESSION][prev_state];
+	push(&(prsr->stck), oprt->tkn, oprt->node, prsr->state);
+
+	free(opnd1);
+	free(opnd2);
+	free(oprt);
+}
+void reduce_list(parser* prsr)
+{
+	info* item, * comma, * list;
+	int prev_state;
+	item = pop(&(prsr->stck));
+	comma = pop(&(prsr->stck));
+	list = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	realloc_children(list->node, list->node->children_size + 1);
+	insert_son(list->node, item, list->node->children_count++);
+
+	prsr->state = GOTO[list->tkn->type][prev_state];
+	push(&(prsr->stck), list->tkn, list->node, prsr->state);
+
+	free(item);
+	free(list);
+	free(comma->node);
+	free(comma->tkn);
+	free(comma);
+}
+void reduce_param(parser* prsr)
+{
+	info* type, * colon, * id;
+	int prev_state;
+	AST node;
+	type = pop(&(prsr->stck));
+	colon = pop(&(prsr->stck));
+	id = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+	node = init_ast(NULL, NODE_PARAMETER, 2);
+	insert_son(node, type, 0);
+	insert_son(node, id, 1);
+
+	prsr->state = GOTO[PARAMETER][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(colon->node);
+	free(colon->tkn);
+	free(colon);
+	free(type);
+	free(id);
+}
+void reduce_use(parser* prsr)
+{
+	info* semcol, * stmt, * colon, * use;
+	int prev_state;
+	AST node;
+	semcol = pop(&(prsr->stck));
+	stmt = pop(&(prsr->stck));
+	colon = pop(&(prsr->stck)); 
+	use = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	node = init_ast(NULL, NODE_USE_DECLARE, 1);
+	add_son(node, stmt->node);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(colon->node);
+	free(colon->tkn);
+	free(colon);
+	free(use->node);
+	free(use->tkn);
+	free(use);
+	free(stmt);
+}
+void reduce_func_declare(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* block = pop(&(prsr->stck)),
+		* cl_bracket = pop(&(prsr->stck)),
+		* param_list = pop(&(prsr->stck)),
+		* op_bracket = pop(&(prsr->stck)),
+		* param = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	AST node = init_ast(NULL, NODE_FUNC_DECLARE, 3);
+	insert_son(node, param, 0);
+	insert_son(node, param_list, 1);
+	insert_son(node, block, 2);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+	
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(cl_bracket->node);
+	free(cl_bracket->tkn);
+	free(cl_bracket);
+	free(op_bracket->node);
+	free(op_bracket->tkn);
+	free(op_bracket);
+	free(declare->node);
+	free(declare->tkn);
+	free(declare);
+	free(block);
+	free(param_list);
+	free(param);
+}
+void reduce_var_declare_full(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* eq = pop(&(prsr->stck)),
+		* param = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	insert_son(node, param, 0);
+	insert_son(node, expr, 1);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(eq->node);
+	free(eq->tkn);
+	free(eq);
+	free(declare->node);
+	free(declare->tkn);
+	free(declare);
+	free(param);
+	free(expr);
+}
+void reduce_var_declare_half(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* eq = pop(&(prsr->stck)),
+		* id = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	insert_son(node, id, 0);
+	insert_son(node, expr, 1);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(declare->node);
+	free(declare->tkn);
+	free(declare);
+	free(eq->node);
+	free(eq->tkn);
+	free(eq);
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(expr);
+	free(id);
+}
+void reduce_var_declare_type(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* param = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	insert_son(node, param, 0);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(declare->node);
+	free(declare->tkn);
+	free(declare);
+	free(param);
+}
+void reduce_var_declare_empty(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* id = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	insert_son(node, id, 0);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(semcol->node);
+	free(semcol->tkn);
+	free(semcol);
+	free(declare->node);
+	free(declare->tkn);
+	free(declare);
+	free(id);
+}
+
+void reduce_loop_while(parser* prsr)
+{
+	info* block = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
+		* loop = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	loop->node = init_ast(loop->tkn, NODE_LOOP, 2);
+	insert_son(loop->node, expr, 0);
+	insert_son(loop->node, block, 1);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), loop->tkn, loop->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free(loop);
+	free(expr);
+	free(block);
+}
+void reduce_loop_for(parser* prsr)
+{
+	info* block = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* stmt = pop(&(prsr->stck)),
+		* semcol = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* arrow = pop(&(prsr->stck)),
+		* param = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck)), //
+		* opbrck = pop(&(prsr->stck)),
+		* loop = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST iterator = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	insert_son(iterator, param, 0);
+	insert_son(iterator, expr, 1);
+	loop->node = init_ast(loop->tkn, NODE_LOOP, 3);
+	insert_son(loop->node, iterator, 0);
+	insert_son(loop->node, stmt, 1);
+	insert_son(loop->node, block, 2);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), loop->tkn, loop->node, prsr->state);
+
+	free_all(opbrck);
+	free_all(declare);
+	free_all(arrow);
+	free_all(semcol);
+	free_all(clbrck);
+	free(loop);
+	free(param);
+	free(expr);
+	free(stmt);
+	free(block);
+}
+void reduce_block(parser* prsr)
+{
+	info* clbrck = pop(&(prsr->stck)),
+		* stmt_lst = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	prsr->state = GOTO[BLOCK][prev_state];
+	push(&(prsr->stck), stmt_lst->tkn, stmt_lst->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free(stmt_lst);
+}
+
+void reduce_if(parser* prsr)
+{
+	info* block = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
+		* ifkw = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	alloc_children(ifkw->node, 3);
+	insert_son(ifkw->node, expr->node, 0);
+	insert_son(ifkw->node, block->node, 1);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), ifkw->tkn, ifkw->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free(ifkw);
+	free(expr);
+	free(block);
+}
+void reduce_else_if(parser* prsr)
+{
+	info* block = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
+		* elskw = pop(&(prsr->stck)),
+		* ifkw = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST ifstmt = ifkw->node;
+
+	while (ifstmt->children[2] != NULL)
+		ifstmt = ifstmt->children[2];
+
+	alloc_children(elskw->node, 3);
+	insert_son(elskw->node, expr->node, 0);
+	insert_son(elskw->node, block->node, 1);
+	insert_son(ifstmt, elskw->node, 2);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), elskw->tkn, elskw->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free(elskw);
+	free(expr);
+	free(block);
+}
+void reduce_else(parser* prsr)
+{
+	info* block = pop(&(prsr->stck)),
+		* elskw = pop(&(prsr->stck)),
+		* ifkw = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST ifstmt = ifkw->node;
+	while (ifstmt->children[2] != NULL)
+		ifstmt = ifstmt->children[2];
+	insert_son(ifstmt, block->node, 2);
+
+	free_all(elskw);
+	free(block);
+	free(ifkw);
+}
+
+void reduce_assign_eq(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* eq = pop(&(prsr->stck)),
+		* param = pop(&(prsr));
+	int prev_state = top(&(prsr->stck))->state;
+	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2);
+	insert_son(node, param->node, 0);
+	insert_son(node, expr->node, 1);
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free_all(semcol);
+	free_all(eq);
+	free(expr);
+	free(param);
+}
+
+void reduce_stmt(parser* prsr)
+{
+	info* semcol = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	prsr->state = GOTO[STATEMENT][prev_state];
+	push(&(prsr->stck), expr->tkn, expr->node, prsr->state);
+
+	free_all(semcol);
+	free(expr);
+}
+
+
 void reduce(parser* prsr, item_set rule) 
 {
 	int i;
@@ -94,7 +601,7 @@ void reduce(parser* prsr, item_set rule)
 		father->children_count++;
 	}
 
-	push(prsr->stck, rule.lhs.symbol, father, GOTO[rule.lhs.symbol][top(prsr->stck)->state]);
+	//push(prsr->stck, rule.lhs.symbol, father, GOTO[rule.lhs.symbol][top(prsr->stck)->state]);
 }
 
 void init_rules_arr(int rules_count)

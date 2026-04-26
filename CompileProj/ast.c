@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 
-AST init_ast(token tkn, node_kind kind, int children)
+AST init_ast(token* tkn, node_kind kind, int children)
 {
 	AST syntax_tree = create_leaf(tkn, kind);
 	alloc_children(syntax_tree, children);
@@ -11,7 +11,7 @@ AST init_ast(token tkn, node_kind kind, int children)
 	return syntax_tree;
 }
 
-AST create_leaf(token tkn, node_kind kind)
+AST create_leaf(token* tkn, node_kind kind)
 {
 	AST ast = (AST)malloc(sizeof(syntax_node));
 	data_type dattype;
@@ -23,14 +23,18 @@ AST create_leaf(token tkn, node_kind kind)
 	ast->children_count = 0;
 	ast->children_size = 0;
 	ast->kind = kind;
-	ast->line = tkn.line;
-	ast->col = tkn.col;
+	if (tkn)
+	{
+		ast->line = tkn->line;
+		ast->col = tkn->col;
 
-	if (dattype == NUM)
-		ast->data.value = tkn.value;
-	
-	else if (dattype == NAME)
-		ast->data.name = tkn.lexeme;
+
+		if (dattype == NUM)
+			ast->data.value = tkn->value;
+
+		else if (dattype == NAME)
+			ast->data.name = tkn->lexeme;
+	}
 
 	return ast;
 }
@@ -48,6 +52,20 @@ void alloc_children(AST ast, int children)
 	{
 		ast->children[i] = NULL;
 	}
+}
+void realloc_children(AST ast, int children)
+{
+	int i;
+	ast->children = (AST*)realloc(ast->children, children * sizeof(AST));
+	if (!ast->children) memory_error();
+	if (children < ast->children_size)
+		ast->children_count = children;
+	else
+	{
+		for (i = ast->children_count; i < children; i++)
+			ast->children[i] = NULL;
+	}
+	ast->children_size = children;
 }
 
 int insert_son(AST ast, AST son, int index)
@@ -76,6 +94,8 @@ int add_son(AST ast, AST son)
 		ast->children_size *= 2;
 		ast->children[ast->children_count++] = son;
 	}
+	else
+		ast->children_count++;
 	
 	return 1;
 }

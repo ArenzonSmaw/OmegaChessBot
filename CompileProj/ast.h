@@ -8,12 +8,13 @@ typedef enum
 {
 	NODE_START,
 	NODE_PROGRAM,
+	NODE_USE_DECLARE,
 	NODE_FUNC_DECLARE,
 	NODE_VAR_DECLARE,
 	NODE_ASSIGNMENT,
 
 	NODE_IF,
-	NODE_WHILE,
+	NODE_LOOP,
 	NODE_RETURN,
 	NODE_BREAK,
 	NODE_PASS,
@@ -57,6 +58,8 @@ typedef enum
 
 	NODE_FUNC_CALL,
 	NODE_BLOCK,
+	NODE_TYPE_CAST,
+	NODE_PARAMETER,
 
 	KIND_COUNT
 
@@ -111,9 +114,10 @@ typedef struct ast_node
 
 
 
-AST init_ast(token tkn, node_kind kind, int children);
-AST create_leaf(token, node_kind kind);
+AST init_ast(token* tkn, node_kind kind, int children);
+AST create_leaf(token*, node_kind kind);
 void alloc_children(AST ast, int children);
+void realloc_children(AST ast, int children);
 int insert_son(AST ast, AST son, int index);
 int add_son(AST ast, AST son);
 void alloc_children(AST ast, int children);
