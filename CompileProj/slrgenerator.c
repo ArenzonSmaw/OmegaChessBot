@@ -21,7 +21,11 @@ int FOLLOW[SYMBOLS_COUNT - TERMINALS_COUNT][TERMINALS_COUNT];
 
 void alloc_tables(int*** ACTION, int*** GOTO)
 {
-	//allocate dynamically a symbols_count X 10 goto and action tables
+	/*
+		GETS: pointers to action and goto table
+		DOES: allocates memory for both tables by number of current states
+		RETS: allocated tables via pointers
+	*/
 
 	int i, j;
 	gnrtr.states_count = 20;
@@ -87,7 +91,7 @@ void expand()
 		gnrtr.ACTION[i] = (int*)realloc(gnrtr.ACTION[i], (gnrtr.states_count + states_add) * sizeof(int));
 		if (gnrtr.ACTION[i] == NULL)
 			memory_error();
-		for (j = 0; j < gnrtr.states_count; j++)
+		for (j = gnrtr.states_count; j < gnrtr.states_count + states_add; j++)
 		{
 			gnrtr.ACTION[i][j] = ERROR;
 		}
@@ -97,7 +101,7 @@ void expand()
 		gnrtr.GOTO[i] = (int*)realloc(gnrtr.GOTO[i], (gnrtr.states_count + states_add) * sizeof(int));
 		if (gnrtr.GOTO[i] == NULL)
 			memory_error();
-		for (j = gnrtr.states_count; j < gnrtr.states_count+states_add; j++)
+		for (j = gnrtr.states_count; j < gnrtr.states_count + states_add; j++)
 		{
 			gnrtr.GOTO[i][j] = -1;
 		}
@@ -113,10 +117,18 @@ void expand()
 
 int rules_isEqual(item_set rule1, item_set rule2)
 {
+	/*
+		GETS: 2 item sets (items)
+		RETS: true if the items are equal (same rule and same position), false otherwise
+	*/
 	return rule1.rule_num == rule2.rule_num && rule1.pos == rule2.pos;
 }
 int sets_isEqual(items_arr set1, int size1, items_arr set2, int size2)
 {
+	/*
+		GETS: two sets (arrays) of items, and their sizes
+		RETS: true if both sets contain the same items, else otherwise
+	*/
 	int idx, jdx, found;
 	if (size1 != size2) return 0;
 	for (idx = 0; idx < size1; idx++)
@@ -132,6 +144,11 @@ int sets_isEqual(items_arr set1, int size1, items_arr set2, int size2)
 
 int add_to_set(items_arr* arr, item_set set, int* arr_size, int* arr_count)
 {
+	/*
+		GETS: set of items, an item , the set size and elements count 
+		DOES: adds the item to the set if not already set
+		RETS: updates via size and count pointer the new size and element cout
+	*/
 	int index, found = 0, dot, equal;
 	item_set rule;
 	items_arr temp;
@@ -166,6 +183,12 @@ int add_to_set(items_arr* arr, item_set set, int* arr_size, int* arr_count)
 }
 void closure(items_arr* set, int* set_size, int* set_count, items_arr rules, int length)
 {
+	/*
+		GETS: pointer to set of items, set size, count of elements in array, array of rule items, and rule items length
+		DOES: adds to the set of items all other items that can start with the same symbol as 
+																at least one of the existing items in the 
+		RETS: void
+	*/
 	int changed = 1;
 	int rule_num, index;
 	item_set rule;
@@ -189,6 +212,12 @@ void closure(items_arr* set, int* set_size, int* set_count, items_arr rules, int
 
 int get_state_index(items_arr set, int set_size, int *is_new)
 {
+	/*
+		GETS: array of items, its size, and pointer to flag (is_new)
+		DOES: checks if a state with the same array of item exists. if yes, is_new is false. 
+																	if not, builds a new state that hold the items array
+		RETS: index of state with the items array, return if the state has been built now or already existed, via is_new flag
+	*/
 	int stt;
 	*is_new = 1;
 	for (stt = 0; stt < next_state; stt++)
@@ -210,6 +239,12 @@ int get_state_index(items_arr set, int set_size, int *is_new)
 
 int calc_goto(int curr_state, symbol X, items_arr rules, int rules_count)
 {
+	/*
+		GETS: state index, input symbol, array of items and its length
+		DOES: if the continuation of the state by symbol already defined, reteurn the next state
+				if not, advance the item, add it to the items set and set the continuation to be the next state to be built
+		RETS: continuation state number
+	*/
 	items_arr rule_set = NULL;
 	int set_size = 0, set_count = 0;
 	item_set curr_rule;
@@ -243,6 +278,12 @@ int calc_goto(int curr_state, symbol X, items_arr rules, int rules_count)
 
 void build_states(items_arr arr, int arr_size)
 {
+	/*
+		GETS: array of items and its size
+		DOES: initiates the first state to have all items that can start the program, 
+				then, for each state it calls calc_goto to calculate what state continues the rule and update the GOTO table
+		RETS: void
+	*/
 	item_set start = arr[0];
 	int state = 0;
 	items_arr rule_set = (items_arr)malloc(arr_size*sizeof(item_set));
@@ -258,18 +299,7 @@ void build_states(items_arr arr, int arr_size)
 	set_count++;
 
 	closure(&rule_set, &set_size, &set_count, arr, arr_size);
-	int j;
-	for (int i = 0; i < 73; i++)
-	{
-		for (j = 0; j < set_count; j++)
-		{
-			if (rule_set[j].rule_num == -1 * i - 1)
-				break;
-		}
-		if (j == set_count)
-			printf("%d\n", i);
-	}
-
+	
 	states[0].items = rule_set;
 	states[0].count = set_count;
 
@@ -287,6 +317,11 @@ void build_states(items_arr arr, int arr_size)
 
 void fill_first(items_arr rules, int count)
 {
+	/*
+		GETS: array of items and its size
+		DOES: calculates what terminal symbols start a rule and updates FIRST table accordingly
+		RETS: void
+	*/
 	int changed = 1;
 	int index;
 	item_set item;
@@ -323,6 +358,11 @@ void fill_first(items_arr rules, int count)
 
 void fill_follow(items_arr rules, int count)
 {
+	/* 
+		GETS: array of items and its size
+		DOES: calculates which terminals follow rules(indicators to the ends of rule) and fills the FOLLOW table accordingly
+		RETS: void
+	*/
 	int changed = 1;
 	int dot, index, i;
 	item_set rule;
@@ -381,6 +421,12 @@ void fill_follow(items_arr rules, int count)
 
 void fill_state_action(int state_num)
 {
+	/*
+		GETS: state number (index of state in states array)
+		DOES: assigns reduction rule for each terminal symbol that follows a rule in the state
+				assigns shift action for each terminal symbol that is placed after dot position of the rule
+		RETURNS: void
+	*/
 	state stt = states[state_num];
 	int item_idx;
 	symbol sym_idx;
@@ -408,6 +454,11 @@ void fill_state_action(int state_num)
 
 void fill_action(items_arr rules, int count)
 {
+	/*
+		GETS: array of item sets and its length
+		DOES: initializes FIRST and FOLLOW tables via fill functions, then fills each state via fill_state_action func
+		RETURNS: void
+	*/
 	int state_idx;
 	fill_first(rules, count);
 	fill_follow(rules, count);
@@ -415,9 +466,14 @@ void fill_action(items_arr rules, int count)
 	{
 		fill_state_action(state_idx);
 	}
+
+	//accept rule
+	state_idx = gnrtr.GOTO[END_TOKEN][0];
+	gnrtr.ACTION[S_TAG][state_idx] = ACCEPT;
 }
 void free_states()
 {
+	// frees states array items and states array
 	int i;
 	for (i = 0; i < next_state; i++)
 	{
@@ -432,6 +488,11 @@ void free_states()
 }
 void apply_tables(int*** goto_tbl, int*** action_tbl)
 {
+	/*
+		GETS: pointer to goto table and action table
+		DOES: assigns the pointer for the generated goto and action table
+		RETURNS: void
+	*/
 	*goto_tbl = gnrtr.GOTO;
 	*action_tbl = gnrtr.ACTION;
 }
@@ -439,6 +500,11 @@ void apply_tables(int*** goto_tbl, int*** action_tbl)
 
 int generate(items_arr rules, int rule_count, int*** goto_tbl, int*** action_tbl)
 {
+	/*
+		GETS: array of items (rule+position), rules array size, pointer to goto and action tables
+		DOES: generates and applies the goto and action tables based on the items array
+		RETS: generated tables via pointers
+	*/
 	alloc_tables(action_tbl, goto_tbl);
 	build_states(rules, rule_count);
 	fill_action(rules, rule_count);

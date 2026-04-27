@@ -15,50 +15,53 @@ typedef enum
 	LABEL
 } semantic_kind;
 
-typedef enum
-{
-	INT,
-	FLOAT,
-	RATIONAL,
-	NATURAL,
-	CHAR,
-	STRING,
-	VOID,
-	POINTER,
 
-} semantic_type;
+typedef struct {
+	char* name;
+	type_kind type;
+} param_info;
 
 typedef struct symbol_node {
 	char* name;
-	semantic_kind kind;
-	semantic_type type;
+	//double value;
+	semantic_kind kind;  
+	type_kind type;  
+
+	int decl_line;
+	int decl_col;
 	int scope_level;
-	int init_line, init_col;
-	int offset;
-	int parameter_count;
+
+	int offset; 
+	int is_global; 
+
+	int param_count;
+	param_info* params; 
+
+	int is_initialized; 
 
 	struct symbol_node* next;
-
 } symbol_link;
+
 
 typedef struct scope_node {
 	symbol_link *table[TABLE_ROWS];
 	struct scope_node* parent;
 	int level;
-
+	int offset_next;
 } scope_node, *scope;
 
 typedef struct {
 	AST ast;
 	scope current_scope;
-	int current_scope_level;
-	int current_offset;
+	type_kind current_return_type;
+	int loop_depth;
+	int in_function;
 	error_list error;
 } semanticer;
 
 void init_semanticer(semanticer*);
 
-symbol_link* create_symbol(char* name, semantic_kind, semantic_type, int param_count);
+symbol_link* create_symbol(char* name, semantic_kind, type_kind, int param_count);
 void enter_symbol(scope, symbol);
 symbol_link* get_symbol(scope, char* name);
 symbol_link* extract_symbol(scope, char* name);

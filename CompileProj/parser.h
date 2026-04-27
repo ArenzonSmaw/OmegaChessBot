@@ -13,6 +13,7 @@ typedef struct {
 	int input_size;
 	int index;
 
+	int recovering;
 	error_list err_lst;
 } parser;
 

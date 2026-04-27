@@ -93,6 +93,10 @@ typedef enum STATES {
 	ST_POINT,
 	ST_POINTE,
 	ST_POINTER,
+	ST_PR,
+	ST_PRI,
+	ST_PRIN,
+	ST_PRINT,
 	ST_R,
 	ST_RA,
 	ST_RAT,
@@ -107,6 +111,9 @@ typedef enum STATES {
 	ST_RETUR,
 	ST_RETURN,
 	ST_S,
+	ST_SC,
+	ST_SCA,
+	ST_SCAN,
 	ST_ST,
 	ST_STR,
 	ST_STRI,
@@ -143,14 +150,17 @@ static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*);
 
 void illegal_character(lexer* lxr)
 {
+	// character does not fit its position according to the grammar
 	err_append(lxr->err_list, error("ILLEGAL CHARACTER", "unexpected character: " + lxr->input[lxr->index], lxr->line, lxr->col));
 }
 void unknown_character(lexer* lxr)
 {
+	//input character is not an acceptable character of the grammar
 	err_append(lxr->err_list, error("UNKNOWN CHARACTER", "unrecognized character: " + lxr->input[lxr->index], lxr->line, lxr->col));
 }
 void expected_error(lexer* lxr)
 {
+	// missing char / string literal delimiter: ' or " 
 	char exp;
 	if (lxr->data[lxr->count].type == STR_LITERAL)
 		exp = '\"';
@@ -375,10 +385,22 @@ void conv_loop(lexer* lxr)
 	add_char(lxr);
 	lxr->data[lxr->count].type = LOOP;
 }
+void conv_scan(lexer* lxr) 
+{
+	//changes current token to 'input' keyword
+	add_char(lxr);
+	lxr->data[lxr->count].type = SCAN;
+}
+void conv_print(lexer* lxr) 
+{
+	//changes current token to 'print' keyword
+	add_char(lxr);
+	lxr->data[lxr->count].type = PRINT;
+}
 
 void start_operator(lexer* lxr)
 {
-	//starts operator token 
+	//starts operator token and assigns operator types
 	static symbol operators[14] =
 	{
 		PLUS,
@@ -412,72 +434,89 @@ void end_token_start_operator(lexer* lxr)
 
 void conv_operator(lexer* lxr, symbol t)
 {
+	//converts current token to operator type
 	token* tkn = &(lxr->data[lxr->count - 1]);
 	strcat(tkn->lexeme, (char[2]) { lxr->input[lxr->index++], '\0' });
 	tkn->type = t;
 }
 void conv_andand(lexer* lxr)
 {
+	//converts token type to operator: &&
 	conv_operator(lxr, ANDAND);
 }
 void conv_oror(lexer* lxr)
 {
+	//converts token type to operator: ||
 	conv_operator(lxr, OROR);
 }
 void conv_tildeor(lexer* lxr)
 {
+	//converts token type to operator: ~|
 	conv_operator(lxr, TILDE_OR);
 }
 void conv_dblequals(lexer* lxr)
 {
+	//converts token type to operator: ==
 	conv_operator(lxr, DBL_EQUALS);
 }
 void conv_dblright(lexer* lxr)
 {
+	//converts token type to operator: >>
 	conv_operator(lxr, DBL_RIGHT);
 }
 void conv_rightequals(lexer* lxr)
 {
+	//converts token type to operator: >=
 	conv_operator(lxr, RIGHT_EQUALS);
 }
 void conv_dblleft(lexer* lxr)
 {
+	//converts token type to operator: <<
 	conv_operator(lxr, DBL_LEFT);
 }
 void conv_leftequals(lexer* lxr)
 {
+	//converts token type to operator: <=
 	conv_operator(lxr, LEFT_EQUALS);
 }
 void conv_notequals(lexer* lxr)
 {
+	//converts token type to operator: !=
 	conv_operator(lxr, NOT_EQUALS);
 }
 void conv_dblplus(lexer* lxr)
 {
+	//converts token type to operator: ++
 	conv_operator(lxr, DBL_PLUS);
 }
 void conv_dblminus(lexer* lxr)
 {
+	//converts token type to operator: --
 	conv_operator(lxr, DBL_MINUS);
 }
 void conv_dblmult(lexer* lxr)
 {
+	//converts token type to operator: **
 	conv_operator(lxr, DBL_MULT);
 }
 void conv_dbldivide(lexer* lxr)
 {
+	//converts token type to operator: //
 	conv_operator(lxr, DBL_DIVIDE);
 }
 void conv_dblmod(lexer* lxr)
 {
+	//converts token type to operator: %%
 	conv_operator(lxr, DBL_MOD);
 }
 void conv_notnot(lexer* lxr)
 {
+	//converts token type to operator: !!
 	conv_operator(lxr, NOTNOT);
 }
 void conv_arrow(lexer* lxr)
 {
+	//converts token type to operator: ->
 	conv_operator(lxr, ARROW);
 }
 
@@ -495,6 +534,7 @@ void conv_check(lexer* lxr)
 }
 void conv_exception(lexer* lxr)
 {
+	//converts token to keyword 'exception'
 	add_char(lxr);
 	lxr->data[lxr->count].type = EXCEPTION;
 }
@@ -506,6 +546,7 @@ void conv_declare(lexer* lxr)
 }
 void conv_use(lexer* lxr)
 {
+	//converts token to keyword 'use'
 	add_char(lxr);
 	lxr->data[lxr->count].type = USE;
 }
@@ -527,6 +568,7 @@ void conv_else(lexer* lxr)
 
 void table_zero()
 {
+	// calibrates CHAR_CLASS, GOTO and ACTION tables to their default values
 	int st, ch;
 	
 	for (ch = 0; ch <= 127; ch++)
@@ -542,6 +584,8 @@ void table_zero()
 }
 void init_char_class_table()
 {
+	// assigns the grammar-defined char 'class' to each ascii character 
+
 	int ch;
 
 	//invisible characters
@@ -699,20 +743,20 @@ void init_operator_states()
 	int ch;
 	for (st = ST_START; st < ST_COMMENT1; st++)
 	{
-		GOTO[st][CH_DOT] = ST_DOT;//
+		GOTO[st][CH_DOT] = ST_DOT;// is not a part of a multi character operator
 		GOTO[st][CH_DIVIDE] = ST_DIV;
 		GOTO[st][CH_PLUS] = ST_PLUS;
 		GOTO[st][CH_MULT] = ST_MULT;
 		GOTO[st][CH_MOD] = ST_MOD;
 		GOTO[st][CH_OR] = ST_OR;
-		GOTO[st][CH_TILDE] = ST_TILDE;//
+		GOTO[st][CH_TILDE] = ST_TILDE;// is not a standalone operator
 		GOTO[st][CH_AND] = ST_AND;
 		GOTO[st][CH_LEFT] = ST_LEFT;
 		GOTO[st][CH_RIGHT] = ST_RIGHT;
 		GOTO[st][CH_NOT] = ST_NOT;
 		GOTO[st][CH_EQUALS] = ST_EQUALS;
 		GOTO[st][CH_MINUS] = ST_MINUS;
-		GOTO[st][CH_COLON] = ST_START;//
+		GOTO[st][CH_COLON] = ST_START;// is not a part of a multi character operator
 		GOTO[st][CH_HASHTAG] = ST_COMMENT1;
 	}
 	for (st = ST_DOT; st <= ST_EQUALS; st++)
@@ -742,6 +786,7 @@ void init_operator_states()
 }
 void init_numeric_states()
 {
+	//initiates the numeric states, handling integer rational and floating literals
 	int ch;
 
 	SET(ST_INTEGER, CH_DIGIT, ST_INTEGER, add_char);
@@ -769,7 +814,11 @@ typedef struct {
 }keyword;
 void init_keywords(int start_num, keyword kws[], int kws_num)
 {
-	//keyword state generator
+	/*
+		GETS: first state of keyword section, array of keyword structs, and its size
+		DOES: sets a path for keyword acceptance, and the actions
+		RETS: void
+	*/
 
 	int i /*, letter*/; 
 	state state_num = start_num, current, last;
@@ -832,14 +881,16 @@ void init_keywords_states()
 		{ "natural", conv_vartype },
 		{ "pass", conv_pass },
 		{ "pointer", conv_vartype },
+		{ "print", conv_print},
 		{ "rational", conv_vartype },
 		{ "return", conv_return },
+		{ "scan", conv_scan },
 		{ "string", conv_vartype },
 		{ "true", conv_bool },
 		{ "use", conv_use },
 		{ "void", conv_vartype }
 	};
-	init_keywords(ST_B, keywords, 21);
+	init_keywords(ST_B, keywords, 23);
 }
 void init_comments()
 {
@@ -877,7 +928,7 @@ void init_comments()
 
 void init_tables() 
 {
-	//initiates all tables
+	//initiates all tables via respective functions
 	table_zero();
 	init_char_class_table();
 	init_basic_cases();
@@ -893,6 +944,11 @@ void init_tables()
 #define index (lxr->index)
 void tokenize(lexer *lxr)
 {
+	/*
+		GETS: pointer to lexer structure
+		DOES: iterates over lxr->input and builds array of tokens
+		RETS: array of token via lxr->data
+	*/
 	INPUT ch_class;
 	state state = ST_START;
 	void (*action)(lexer*);

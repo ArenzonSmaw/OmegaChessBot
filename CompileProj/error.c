@@ -2,7 +2,7 @@
 #include <string.h>
 #pragma warning (disable:4996)
 
-error_message* error(char title[21], char message[32], int line, int col)
+error_message* error(char title[TITLE_MAX_LENGTH], char message[MESSAGE_MAX_LENGTH], int line, int col)
 {
 	error_message* er = (error_message*)malloc(sizeof(error_message));
 	if (er != NULL)
@@ -20,7 +20,7 @@ error_message* error(char title[21], char message[32], int line, int col)
 }
 void print_error(error_message *msg)
 {
-	printf("%s: %s, At: Line:%d, Col:%d", msg->error_title, msg->error_message, msg->line, msg->col);
+	printf("%s: %s, At: Line:%d, Col:%d.", msg->error_title, msg->error_message, msg->line, msg->col);
 }
 
 error_list err_list()

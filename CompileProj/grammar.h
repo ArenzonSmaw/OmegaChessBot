@@ -63,6 +63,8 @@ typedef enum {
 	LOOP,
 	DECLARE,
 	USE,
+	SCAN,
+	PRINT,
 
 	IF,
 	ELSE,

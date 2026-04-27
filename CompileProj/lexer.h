@@ -52,5 +52,10 @@ typedef enum INPUT {
 
 
 void tokenize(lexer *lxr);
+/*
+	GETS: pointer to lexer structure
+	DOES: iterates over lxr->input and builds array of tokens
+	RETS: array of token via lxr->data
+*/
 
 #endif

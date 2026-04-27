@@ -45,6 +45,9 @@
     <ClCompile Include="semantic.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="codegen.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="lexer.h">
@@ -75,6 +78,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="semantic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="codegen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

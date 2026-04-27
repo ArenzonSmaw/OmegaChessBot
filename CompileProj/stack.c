@@ -4,7 +4,6 @@
 stack init_stack()
 {
 	stack s = (stack)malloc(sizeof(stack_node));
-	info* data = (info*)malloc(sizeof(info));
 	s->data = (info*)malloc(sizeof(info));
 	s->next = NULL;
 	s->data->node = NULL;

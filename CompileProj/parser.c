@@ -11,7 +11,7 @@
 
 #define START_STATE 0
 
-#define RULES_NUM 73
+#define RULES_NUM 75
 
 items_arr rules;
 int rule_index;
@@ -21,9 +21,20 @@ int states_count;
 
 node_kind TERMINAL_TO_KIND[TERMINALS_COUNT];
 void (*REDUCTION[RULES_NUM])(parser*, symbol);
+char SYMBOL_TO_LEXEME[TERMINALS_COUNT][TOKEN_MAX_LENGTH] = {
+	"identifier", "integer", "float", "rational", "char", "string",
+	"bool", "type", "operator", "'&'", "'&&'", "'|'", "'||'", "'~|'",
+	"'='", "'=='", "'>'", "'>>'", "'>='", "'<'", "'<<'", "'<='", "'!=",
+	"'+'", "'++'", "'-'", "'--'", "'*'", "'**'", "'/'", "'//'",
+	"'%'", "'%%'", "'!'", "'!!'", "':'", "'->'", "';'", "','",
+	"'('", "')'", "'{'", "'}'", "'['", "']'",
+	"return", "break", "pass", "loop", "declare", "use", "scan", "print",
+	"if", "else", "check", "exception", "'_'", "END_OF_FILE"
+};
 
 void fill_terminal_to_kind()
 {
+	//fills TERMINAL_TO_KIND table 
 	symbol i;
 	for (i = 0; i < KIND_COUNT; i++)
 	{
@@ -37,6 +48,9 @@ void fill_terminal_to_kind()
 	}
 	TERMINAL_TO_KIND[CHR_LITERAL] = NODE_CHAR;
 	TERMINAL_TO_KIND[STR_LITERAL] = NODE_STRING;
+
+	TERMINAL_TO_KIND[SCAN] = NODE_SCAN;
+	TERMINAL_TO_KIND[PRINT] = NODE_PRINT;
 
 	TERMINAL_TO_KIND[AND] = NODE_BIT_AND;
 	TERMINAL_TO_KIND[ANDAND] = NODE_LOG_AND;
@@ -67,19 +81,74 @@ void fill_terminal_to_kind()
 
 void free_all(info* ptr)
 {
+	//frees all data from info struct
 	free(ptr->node);
 	free(ptr);
 }
-void syntax_error(parser* prsr) 
+
+void recovery_consume(parser* prsr)
 {
+	/*
+		GETS: pointer to parser structure
+		DOES: if next token is a ; { or } then end parser recovery
+				if token is ; or } consume before returning
+				otherwise consume current token
+	*/
 	token tkn = prsr->input[prsr->index];
-	char lexeme[TOKEN_MAX_LENGTH] = "'";
-	strcat(lexeme, tkn.lexeme);
-	strcat(lexeme, "' unexpected");
-	err_append(prsr->err_lst, error("Syntax Error", lexeme, tkn.line, tkn.col));
+	if (tkn.type == SEMICOLON || tkn.type == CL_CRLBRACKET)
+	{
+		prsr->index++;
+		prsr->recovering = 0;
+	}
+	else if (tkn.type == OP_CRLBRACKET)
+		prsr->recovering = 0;
+	else
+		prsr->index++;
 }
+void produce_error_message(parser* prsr, token tkn)
+{
+	/*
+		GETS: pointer to parset struct and token
+		DOES: creates and appends error message for token 
+	*/
+	symbol i;
+	int count = 0;
+	char message[TOKEN_MAX_LENGTH] = "unexpected token '";
+	strcat(message, tkn.lexeme);
+	strcat(message, "', expected ");
+	for (i = 0; i < TERMINALS_COUNT; i++)
+	{
+		if (SLR_ACTION[i][prsr->state] != ERROR)
+		{
+			if (count > 0) strcat(message, " or ");
+			strcat(message, SYMBOL_TO_LEXEME[i]);
+			count++;
+		}
+	}
+	err_append(prsr->err_lst, error("syntax error", message, tkn.line, tkn.col));
+}
+void syntax_error( parser* prsr) 
+{
+	/*
+		GETS: pointer to parser
+		DOES: calls produce error message, empties parser stack and consumes incoming tokens 
+													until recovery is done or input ends
+	*/
+	token tkn = prsr->input[prsr->index];
+	produce_error_message(prsr, tkn);
+	prsr->recovering = 1;
+	while (!isEmpty(prsr->stck))
+		pop(&(prsr->stck));
+	prsr->state = top(&(prsr->stck))->state;
+	prsr->index++;
+	tkn = prsr->input[prsr->index];
+	while (prsr->recovering && prsr->index < prsr->input_size)
+		recovery_consume(prsr);
+}
+
 void shift(parser* prsr) 
 {
+	//creates AST leaf, advances state and pushes state, node and token.
 	token* tkn = &(prsr->input[prsr->index]);
 	node_kind kind = TERMINAL_TO_KIND[tkn->type];
 	AST node = create_leaf(tkn, kind);
@@ -133,10 +202,10 @@ void reduce_function_call(parser* prsr, symbol lhs)
 void reduce_cast(parser* prsr, symbol lhs)
 {
 	//FACTOR -> ':' + type + ':' + id
-	info* factor, * r_col, * type, * l_col;
+	info* id, * r_col, * type, * l_col;
 	int prev_state;
 	AST node;
-	factor = pop(&(prsr->stck));
+	id = pop(&(prsr->stck));
 	r_col = pop(&(prsr->stck));
 	type = pop(&(prsr->stck));
 	l_col = pop(&(prsr->stck));
@@ -144,7 +213,7 @@ void reduce_cast(parser* prsr, symbol lhs)
 
 	node = init_ast(NULL, NODE_TYPE_CAST, 2);
 	insert_son(node, type, 0);
-	insert_son(node, factor, 1);
+	insert_son(node, id, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 
@@ -153,7 +222,7 @@ void reduce_cast(parser* prsr, symbol lhs)
 	free_all(r_col);
 	free_all(l_col);
 	free(type);
-	free(factor);
+	free(id);
 }
 void reduce_prefix_arith(parser* prsr, symbol lhs)
 {
@@ -468,25 +537,31 @@ void reduce_if(parser* prsr, symbol lhs)
 {
 	// IF -> if + FACTOR + BLOCK
 	info* block = pop(&(prsr->stck)),
-		* factor = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
 		* ifkw = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 	alloc_children(ifkw->node, 3);
-	insert_son(ifkw->node, factor->node, 0);
+	insert_son(ifkw->node, expr->node, 0);
 	insert_son(ifkw->node, block->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), ifkw->tkn, ifkw->node, prsr->state);
 
+	free_all(opbrck);
+	free_all(clbrck);
 	free(ifkw);
-	free(factor);
+	free(expr);
 	free(block);
 }
 void reduce_else_if(parser* prsr, symbol lhs)
 {
 	//ELSE IF -> IF + else + FACTOR + BLOCK
 	info* block = pop(&(prsr->stck)),
-		* factor = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
 		* elskw = pop(&(prsr->stck)),
 		* ifkw = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
@@ -496,15 +571,17 @@ void reduce_else_if(parser* prsr, symbol lhs)
 		ifstmt = ifstmt->children[2];
 
 	alloc_children(elskw->node, 3);
-	insert_son(elskw->node, factor->node, 0);
+	insert_son(elskw->node, expr->node, 0);
 	insert_son(elskw->node, block->node, 1);
 	insert_son(ifstmt, elskw->node, 2);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), elskw->tkn, elskw->node, prsr->state);
 
+	free_all(opbrck);
+	free_all(clbrck);
 	free(elskw);
-	free(factor);
+	free(expr);
 	free(block);
 	free(ifkw);
 }
@@ -527,6 +604,45 @@ void reduce_else(parser* prsr, symbol lhs)
 	free(block);
 	free(ifkw);
 }
+
+void reduce_scan(parser* prsr, symbol lhs)
+{
+	//SCAN_EXPR -> scan + '(' + type + ')'
+	info* clbrck = pop(&(prsr->stck)),
+		* type = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
+		* scan = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	scan->node->type = type->node->type;
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), scan->tkn, scan->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free_all(type);
+	free(scan);
+}
+void reduce_print(parser* prsr, symbol lhs)
+{
+	// PRINT_EXPR -> print + '(' + expr + ')'
+	info* clbrck = pop(&(prsr->stck)),
+		* expr = pop(&(prsr->stck)),
+		* opbrck = pop(&(prsr->stck)),
+		* print = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	alloc_children(print->node, 1);
+	add_son(print->node, expr->node);
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), print->tkn, print->node, prsr->state);
+
+	free_all(clbrck);
+	free_all(opbrck);
+	free(expr);
+	free(print);
+}
+
 
 void reduce_assign_eq(parser* prsr, symbol lhs)
 {
@@ -615,6 +731,18 @@ void reduce_stmt(parser* prsr, symbol lhs)
 	free_all(semcol);
 	free(expr);
 }
+void reduce_new_stmt_list(parser* prsr, symbol lhs)
+{
+	// STMT_LIST -> STATEMENT
+	info* stmt = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck));
+	AST node = init_ast(NULL, NODE_STMT_LIST, 1);
+	add_son(node, stmt->node);
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(stmt);
+}
 void reduce_stmt_list(parser* prsr, symbol lhs)
 {
 	//STMT_LIST -> STMT_LIST + STATEMENT
@@ -679,6 +807,7 @@ void reduce_check(parser* prsr, symbol lhs)
 
 void fill_reduction_tbl()
 {
+	//fills reduction table with the respective reduction functions
 	int i;
 	//single term reduction
 	for (i = 0; i <= 9; i++)
@@ -686,7 +815,7 @@ void fill_reduction_tbl()
 	REDUCTION[17] = REDUCTION[18] = REDUCTION[28] = REDUCTION[31] = REDUCTION[38] = REDUCTION[41] = reduce_basic_rec_case;
 	for (i = 43; i <= 46; i++)
 		REDUCTION[i] = reduce_basic_rec_case;
-	REDUCTION[61] = REDUCTION[65] = REDUCTION[72] = reduce_basic_rec_case;
+	REDUCTION[65] = REDUCTION[72] = reduce_basic_rec_case;
 
 	// operand operator operand 
 	for (i = 19; i <= 27; i++)
@@ -711,6 +840,7 @@ void fill_reduction_tbl()
 	REDUCTION[16] = REDUCTION[64] = reduce_list;
 	//stmt_list
 	REDUCTION[60] = reduce_stmt_list;
+	REDUCTION[61] = reduce_new_stmt_list;
 
 	//function call
 	REDUCTION[10] = reduce_function_call;
@@ -748,11 +878,19 @@ void fill_reduction_tbl()
 
 	//check
 	REDUCTION[54] = reduce_check;
+
+	//input and output
+	REDUCTION[74] = reduce_print;
+	REDUCTION[73] = reduce_scan;
 	
 }
 
 void reduce(parser* prsr, int rule_num) 
 {
+	/*
+		GETS: parser struct pointer and reduction rule number
+		DOES: exctracts rules left hand side and calls the reduction functions from REDUCTION table
+	*/
 	int rule_idx = -1 * rule_num - 1;
 	symbol lhs = rules[rule_idx].lhs.symbol;
 	void (*reduce_func)(parser*, symbol) = REDUCTION[rule_idx];
@@ -762,11 +900,16 @@ void reduce(parser* prsr, int rule_num)
 
 void init_rules_arr(int rules_count)
 {
+	//allocates the global rules array to hold rules_count elements
 	rules = (items_arr)malloc(sizeof(item_set) * rules_count);
 	rule_index = 0;
 }
 void add_rule(item lhs, item rhs[], int length)
 {
+	/*
+		GETS: rules left hand side symbol and right hand side sequence, right hand side length
+		DOES: builds an item set for that rule and adds it to the global rules array
+	*/
 	int i;
 	rules[rule_index].lhs = lhs;
 
@@ -782,7 +925,9 @@ void add_rule(item lhs, item rhs[], int length)
 
 void fill_rules_arr()
 {
-	const item
+	// initiating and filling the rules array with the initiation functions
+	
+	const item // item definitions
 		literal = {LITERAL, NON_TERMINAL},
 		param = {PARAMETER, NON_TERMINAL },
 		param_list = { PARAM_LIST, NON_TERMINAL },
@@ -852,6 +997,8 @@ void fill_rules_arr()
 		loop = {LOOP, TERMINAL },
 		decl = {DECLARE, TERMINAL },
 		use = {USE, TERMINAL },
+		scan = {SCAN, TERMINAL},
+		print = {PRINT, TERMINAL},
 
 		ifky = {IF, TERMINAL },
 		elsky = {ELSE, TERMINAL},
@@ -860,85 +1007,107 @@ void fill_rules_arr()
 		grammar_start = {S_TAG, NON_TERMINAL}
 	;
 	{
-		init_rules_arr(RULES_NUM);
-		add_rule(grammar_start, (item[1]) { prgrm }, 1);
-		add_rule(literal, (item[1]) { bool_lit }, 1);
-		add_rule(literal, (item[1]) { int_lit }, 1);
-		add_rule(literal, (item[1]) { flt_lit }, 1);
-		add_rule(literal, (item[1]) { rat_lit }, 1);
-		add_rule(literal, (item[1]) { chr_lit }, 1);
-		add_rule(literal, (item[1]) { str_lit }, 1);
-		add_rule(factor, (item[1]) { literal }, 1);
-		add_rule(factor, (item[1]) { underline }, 1);
-		add_rule(factor, (item[1]) { id }, 1);
-		add_rule(factor, (item[4]) { id, opbrck, arg_list, clbrck }, 4);
-		add_rule(factor, (item[3]) { opbrck, expr, clbrck }, 3);
-		add_rule(factor, (item[4]) { colon, type, colon, factor }, 4);
-		add_rule(factor, (item[2]) { exclam, factor }, 2);
-		add_rule(factor, (item[2]) { minus, factor }, 2);
-		add_rule(factor, (item[2]) { factor, notnot }, 2);
-		add_rule(arg_list, (item[3]) { arg_list, comma, expr }, 3);
-		add_rule(arg_list, (item[1]) { expr }, 1);
-		add_rule(term, (item[1]) { factor }, 1);
-		add_rule(term, (item[3]) { term, mult, factor }, 3);
-		add_rule(term, (item[3]) { term, divide, factor }, 3);
-		add_rule(term, (item[3]) { term, mod, factor }, 3);
-		add_rule(term, (item[3]) { term, modmod, factor }, 3);
-		add_rule(term, (item[3]) { term, rgtrgt, factor }, 3);
-		add_rule(term, (item[3]) { term, lftlft, factor }, 3);
-		add_rule(term, (item[3]) { term, and, factor }, 3);
-		add_rule(term, (item[3]) { term, tilde_or, factor }, 3);
-		add_rule(term, (item[3]) { term, or , factor }, 3);
-		add_rule(arith, (item[1]) { term }, 1);
-		add_rule(arith, (item[3]) { arith, plus, term }, 3);
-		add_rule(arith, (item[3]) { arith, minus, term }, 3);
-		add_rule(compr, (item[1]) { arith }, 1);
-		add_rule(compr, (item[3]) { compr, right, arith }, 3);
-		add_rule(compr, (item[3]) { compr, rgt_eq, arith }, 3);
-		add_rule(compr, (item[3]) { compr, left, arith }, 3);
-		add_rule(compr, (item[3]) { compr, lft_eq, arith }, 3);
-		add_rule(compr, (item[3]) { compr, eqeq, arith }, 3);
-		add_rule(compr, (item[3]) { compr, not_eq , arith }, 3);
-		add_rule(logic, (item[1]) { compr }, 1);
-		add_rule(logic, (item[3]) { logic, andand, compr }, 3);
-		add_rule(logic, (item[3]) { logic, oror, compr }, 3);
-		add_rule(expr, (item[1]) { logic }, 1);
-		add_rule(stmt, (item[2]) { expr, semcol }, 2);
-		add_rule(incr, (item[1]) { plspls }, 1);
-		add_rule(incr, (item[1]) { mnsmns }, 1);
-		add_rule(incr, (item[1]) { mltmlt }, 1);
-		add_rule(incr, (item[1]) { divdiv }, 1);
-		add_rule(stmt, (item[4]) { id, eq, expr, semcol }, 4);
-		add_rule(stmt, (item[7]) { colon, type, colon, id, eq, expr, semcol }, 7);
-		add_rule(stmt, (item[4]) { id, incr, expr, semcol }, 4);
-		add_rule(stmt, (item[3]) { id, incr, semcol }, 3);
-		add_rule(stmt, (item[2]) { brk, semcol }, 2);
-		add_rule(stmt, (item[2]) { pss, semcol }, 2);
-		add_rule(stmt, (item[3]) { ret, expr, semcol }, 3);
-		add_rule(stmt, (item[7]) { chck, opbrck, expr, comma, id, clbrck, block }, 7);
-		add_rule(stmt, (item[3]) { ifky, factor, block }, 3);
-		add_rule(stmt, (item[3]) { elsky, factor, block }, 3);
-		add_rule(stmt, (item[2]) { elsky, block }, 2);
-		add_rule(stmt, (item[10]) { loop, opbrck, decl, param, arrow, expr, semcol, stmt, clbrck, block }, 10);
-		add_rule(stmt, (item[3]) { loop, factor, block }, 3);
-		add_rule(stmt_list, (item[2]) { stmt_list, stmt }, 2);
-		add_rule(stmt_list, (item[1]) { stmt }, 1);
-		add_rule(block, (item[3]) { opbrck, stmt_list, clbrck }, 3);
-		add_rule(param, (item[3]) { id, colon, type }, 3);
-		add_rule(param_list, (item[3]) { param_list, comma, param }, 3);
-		add_rule(param_list, (item[1]) { param }, 1);
-		add_rule(stmt, (item[4]) { use, colon, stmt, semcol }, 4);
-		add_rule(stmt, (item[3]) { decl, param, semcol }, 3);
-		add_rule(stmt, (item[5]) { decl, param, eq, expr, semcol }, 5);
-		add_rule(stmt, (item[5]) { decl, id, eq, expr, semcol }, 5);
-		add_rule(stmt, (item[3]) { decl, id, semcol }, 3);
-		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);
-		add_rule(prgrm, (item[1]) { stmt_list }, 1);
+		//rules array initiation and fill
+		init_rules_arr(RULES_NUM);							// rule_num / rule_index
+		add_rule(grammar_start, (item[1]) { prgrm }, 1);	//   -1  /   0
+		add_rule(literal, (item[1]) { bool_lit }, 1);		//   -2  /   1
+		add_rule(literal, (item[1]) { int_lit }, 1);		//   -3  /   2
+		add_rule(literal, (item[1]) { flt_lit }, 1);		//   -4  /   3
+		add_rule(literal, (item[1]) { rat_lit }, 1);		//   -5  /   4
+		add_rule(literal, (item[1]) { chr_lit }, 1);		//   -6  /   5
+		add_rule(literal, (item[1]) { str_lit }, 1);		//   -7  /   6
+		add_rule(factor, (item[1]) { literal }, 1);			//   -8  /   7
+		add_rule(factor, (item[1]) { underline }, 1);		//   -9  /   8
+		add_rule(factor, (item[1]) { id }, 1);				//	 -10 /	 9
+																				// add_rule(factor, (item[1]) { id }, 1);									//rule_num / rule_index
+		add_rule(factor, (item[4]) { id, opbrck, arg_list, clbrck }, 4);		//  -11 /  10
+		add_rule(factor, (item[3]) { opbrck, expr, clbrck }, 3);				//  -12 /  11
+		add_rule(factor, (item[4]) { colon, type, colon, factor }, 4);			//  -13 /  12
+		add_rule(factor, (item[2]) { exclam, factor }, 2);						//  -14 /  13
+		add_rule(factor, (item[2]) { minus, factor }, 2);						//  -15 /  14
+		add_rule(factor, (item[2]) { factor, notnot }, 2);						//  -16 /  15
+		add_rule(arg_list, (item[3]) { arg_list, comma, expr }, 3);				//  -17 /  16
+		add_rule(arg_list, (item[1]) { expr }, 1);								//  -18 /  17
+		add_rule(term, (item[1]) { factor }, 1);								//  -19 /  18
+		add_rule(term, (item[3]) { term, mult, factor }, 3);					//  -20 /  19
+		add_rule(term, (item[3]) { term, divide, factor }, 3);					//  -21 /  20
+		add_rule(term, (item[3]) { term, mod, factor }, 3);						//  -22 /  21
+		add_rule(term, (item[3]) { term, modmod, factor }, 3);					//  -23 /  22
+		add_rule(term, (item[3]) { term, rgtrgt, factor }, 3);					//  -24 /  23
+		add_rule(term, (item[3]) { term, lftlft, factor }, 3);					//  -25 /  24
+																	//rule_num / rule_index
+		add_rule(term, (item[3]) { term, and, factor }, 3);			//  -26 /  25
+		add_rule(term, (item[3]) { term, tilde_or, factor }, 3);	//  -27 /  26
+		add_rule(term, (item[3]) { term, or , factor }, 3);			//  -28 /  27
+		add_rule(arith, (item[1]) { term }, 1);						//  -29 /  28
+		add_rule(arith, (item[3]) { arith, plus, term }, 3);		//  -30 /  29
+		add_rule(arith, (item[3]) { arith, minus, term }, 3);		//  -31 /  30
+		add_rule(compr, (item[1]) { arith }, 1);					//  -32 /  31
+		add_rule(compr, (item[3]) { compr, right, arith }, 3);		//  -33 /  32
+		add_rule(compr, (item[3]) { compr, rgt_eq, arith }, 3);		//  -34 /  33
+		add_rule(compr, (item[3]) { compr, left, arith }, 3);		//  -35 /  34
+		add_rule(compr, (item[3]) { compr, lft_eq, arith }, 3);		//  -36 /  35
+		add_rule(compr, (item[3]) { compr, eqeq, arith }, 3);		//  -37 /  36
+		add_rule(compr, (item[3]) { compr, not_eq , arith }, 3);	//  -38 /  37
+		add_rule(logic, (item[1]) { compr }, 1);					//  -39 /  38
+		add_rule(logic, (item[3]) { logic, andand, compr }, 3);		//  -40 /  39
+		add_rule(logic, (item[3]) { logic, oror, compr }, 3);		//  -41 /  40
+		add_rule(expr, (item[1]) { logic }, 1);						//  -42 /  41																								//
+																						// rule_num / rule_index
+		add_rule(stmt, (item[2]) { expr, semcol }, 2);									//	-43 /  42
+		add_rule(incr, (item[1]) { plspls }, 1);										//  -44 /  43
+		add_rule(incr, (item[1]) { mnsmns }, 1);										//  -45 /  44
+		add_rule(incr, (item[1]) { mltmlt }, 1);										//  -46 /  45
+		add_rule(incr, (item[1]) { divdiv }, 1);										//  -47 /  46
+		add_rule(stmt, (item[4]) { id, eq, expr, semcol }, 4);							//  -48 /  47
+		add_rule(stmt, (item[7]) { colon, type, colon, id, eq, expr, semcol }, 7);		//  -49 /  48
+		add_rule(stmt, (item[4]) { id, incr, expr, semcol }, 4);						//  -50 /  49
+		add_rule(stmt, (item[3]) { id, incr, semcol }, 3);								//	-51 /  50
+		add_rule(stmt, (item[2]) { brk, semcol }, 2);									//  -52 /  51
+		add_rule(stmt, (item[2]) { pss, semcol }, 2);									//  -53 /  52
+		add_rule(stmt, (item[3]) { ret, expr, semcol }, 3);								//  -54 / 53
+		add_rule(stmt, (item[7]) { chck, opbrck, expr, comma, id, clbrck, block }, 7);	//  -55 /  54
+		add_rule(stmt, (item[5]) { ifky, opbrck, expr, clbrck, block }, 5);				//  -56 /  55
+		add_rule(stmt, (item[5]) { elsky, opbrck, expr, clbrck, block }, 5);			//  -57 /  56
+		add_rule(stmt, (item[2]) { elsky, block }, 2);									//  -58 / 57
+																												// rule_num / rule_index
+		add_rule(stmt, (item[10]) { loop, opbrck, decl, param, arrow, expr, semcol, stmt, clbrck, block }, 10);	//  -59 /  58
+		add_rule(stmt, (item[3]) { loop, factor, block }, 3);													//  -60 /  59
+		add_rule(stmt_list, (item[2]) { stmt_list, stmt }, 2);													//  -61 /  60
+		add_rule(stmt_list, (item[1]) { stmt }, 1);																//  -62 /  61
+		add_rule(block, (item[3]) { opbrck, stmt_list, clbrck }, 3);											//  -63 /  62
+		add_rule(param, (item[3]) { id, colon, type }, 3);														//  -64 /  63
+		add_rule(param_list, (item[3]) { param_list, comma, param }, 3);										//  -65 /  64
+		add_rule(param_list, (item[1]) { param }, 1);															//  -66 /  65
+		add_rule(stmt, (item[4]) { use, colon, stmt, semcol }, 4);												//  -67 /  66
+		add_rule(stmt, (item[3]) { decl, param, semcol }, 3);													//  -68 /  67
+		add_rule(stmt, (item[5]) { decl, param, eq, expr, semcol }, 5);											//  -69 /  68
+		add_rule(stmt, (item[5]) { decl, id, eq, expr, semcol }, 5);											//  -70 /  69
+		add_rule(stmt, (item[3]) { decl, id, semcol }, 3);														//  -71 /  70
+		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);						//  -72 /  71
+		add_rule(prgrm, (item[1]) { stmt_list }, 1);															//  -73	/  72
+		add_rule(expr, (item[4]) { scan, opbrck, type, clbrck }, 4);											//  -74	/  73
+		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);											//	-75	/  74			
+														
 	}
+}
+void free_rules()
+{
+	//frees the rules array.
+	int i;
+	for (i = 0; i < rule_index; i++)
+	{
+		free(rules[i].rhs);
+	}
+	free(rules);
 }
 
 void create_slr(FILE* fp)
 {
+	/*
+		GETS: file pointer to store the slr tables
+		DOES: calls the generation function and prints the tables into the file
+	*/
 	int i, j;
 	states_count = generate(rules, RULES_NUM, &SLR_GOTO, &SLR_ACTION);
 
@@ -962,17 +1131,24 @@ void create_slr(FILE* fp)
 		}
 		fprintf(fp, "\n");
 	}
+	fprintf(fp, "%d", RULES_NUM);
 
 	fclose(fp);
 }
 int load_slr(FILE* fp)
 {
+	/*
+		GETS: file pointer with the slr tables
+		DOES: allocates the tables and scans the tables from the file
+		RETS: 1 if tables were loaded successfully, 0 otherwise
+	*/
 	int i, j;
-	int symbols;
+	int symbols, rules;
 
 	fscanf(fp, "%d %d\n", &states_count, &symbols);
 	if (symbols != SYMBOLS_COUNT)
 	{
+		fclose(fp);
 		return 0;
 	}
 	else {
@@ -996,13 +1172,24 @@ int load_slr(FILE* fp)
 			}
 		}
 	}
+	fscanf(fp, "%d", &rules);
+	if (rules != RULES_NUM)
+	{
+		fclose(fp);
+		return 0;
+	}
 	fclose(fp);
 	return 1;
 }
 
 void parse(parser* prsr, char* parser_name)
 {
-	
+	/*
+		GETS: pointer to parser struct and slr file name.
+		DOES: loads slr tables from file if valid, otherwise generates slr tables
+		RETS: Abstract Syntax Tree structure via prsr->ast
+	*/
+
 	FILE* fp;
 	token lookahead;
 	action act;
@@ -1012,17 +1199,18 @@ void parse(parser* prsr, char* parser_name)
 
 	fp = fopen(parser_name, "r");
 
-	if (fp != NULL)
+	if (fp != NULL) // if file exists try to load slr tables from file
 	{
-		succeeded = load_slr(fp);
+		succeeded = load_slr(fp); 
 	}
-	if (!succeeded)
+	if (!succeeded) // if file doesnt exist or load was unsuccessful generate slr tables
 	{
 		fp = fopen(parser_name, "w");
 		fill_rules_arr();
 		create_slr(fp);
 	}
 	
+	//initiate tables for reduction and AST creation
 	fill_reduction_tbl();
 	fill_terminal_to_kind();
 	fill_kind_to_data();
@@ -1030,20 +1218,23 @@ void parse(parser* prsr, char* parser_name)
 	prsr->stck = init_stack();
 	prsr->err_lst = err_list();
 	prsr->index = 0;
+	prsr->recovering = 0;
 
 
 	do
 	{
-		lookahead = prsr->input[prsr->index];
+		lookahead = prsr->input[prsr->index];		
 		act = SLR_ACTION[lookahead.type][prsr->state];
-		if (act < 0)
+		if (act == ERROR)
+			syntax_error(prsr);
+		else if (act < 0)
 			reduce(prsr, act);
 		else if (act == SHIFT)
 			shift(prsr);
 		else if (act == ACCEPT)
 			accepted = 1;
-		else
-			syntax_error(prsr);
 
 	} while (!accepted);
+
+	free_rules();
 }

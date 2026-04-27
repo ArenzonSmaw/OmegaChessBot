@@ -124,6 +124,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ast.c" />
+    <ClCompile Include="codegen.c" />
     <ClCompile Include="error.c" />
     <ClCompile Include="grammar.c" />
     <ClCompile Include="lexer.c" />
@@ -139,6 +140,7 @@
     <ClInclude Include="compiler.h" />
     <ClInclude Include="error.h" />
     <ClInclude Include="grammar.h" />
+    <ClInclude Include="codegen.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="lexer.h" />
     <ClInclude Include="parser.h" />

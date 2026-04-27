@@ -24,6 +24,8 @@ typedef enum
 	NODE_CHAR,
 	NODE_STRING,
 	NODE_UNDERLINE,
+	NODE_SCAN,
+	NODE_PRINT,
 
 	NODE_ADD,
 	NODE_SUB,
@@ -31,14 +33,6 @@ typedef enum
 	NODE_DIV,
 	NODE_MOD,
 	NODE_QUO,
-	NODE_INC_UNARY,
-	NODE_INC_BINARY,
-	NODE_DEC_UNARY,
-	NODE_DEC_BINARY,
-	NODE_MAG_UNARY,
-	NODE_MAG_BINARY,
-	NODE_DIM_UNARY,
-	NODE_DIM_BINARY,
 	NODE_LOG_OR,
 	NODE_BIT_OR,
 	NODE_LOG_AND,
@@ -54,10 +48,10 @@ typedef enum
 	NODE_LESS,
 	NODE_LESS_EQUAL,
 	NODE_XOR,
-	NODE_RANGE,
 
 	NODE_FUNC_CALL,
 	NODE_BLOCK,
+	NODE_STMT_LIST,
 	NODE_TYPE_CAST,
 	NODE_PARAMETER,
 
@@ -70,10 +64,12 @@ typedef enum
 	TYPE_FLOAT,
 	TYPE_NATURAL,
 	TYPE_RATIONAL,
+	TYPE_BOOL,
 	TYPE_CHAR,
 	TYPE_STRING,
 	TYPE_VOID,
 	TYPE_POINTER,
+	TYPE_EXCEPTION,
 	TYPE_ERROR,
 
 }type_kind;
@@ -84,8 +80,10 @@ typedef enum {
 	NONE = 3
 }data_type;
 
-data_type KIND_TO_DATA[KIND_COUNT];
-void fill_kind_to_data();
+data_type KIND_TO_TYPE[KIND_COUNT];
+void fill_kind_to_type();
+//fills the kind_to_type array
+
 
 
 typedef struct ast_node

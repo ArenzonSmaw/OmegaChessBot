@@ -4,10 +4,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define MESSAGE_MAX_LENGTH 65
+#define TITLE_MAX_LENGTH 21
+
 typedef struct 
 {
-	char error_message[32];
-	char error_title[21];
+	char error_message[MESSAGE_MAX_LENGTH];
+	char error_title[TITLE_MAX_LENGTH];
 	int line, col;
 }error_message;
 
@@ -18,7 +21,7 @@ typedef struct error_node
 	struct error_node* prev;
 } error_link, *error_list;
 
-error_message* error(char err_title[21], char err_text[32], int line, int col);
+error_message* error(char err_title[TITLE_MAX_LENGTH], char err_text[MESSAGE_MAX_LENGTH], int line, int col);
 
 error_list err_list();
 void err_append(error_list*, error_message*);
