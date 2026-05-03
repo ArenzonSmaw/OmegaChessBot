@@ -1020,5 +1020,5 @@ void tokenize(lexer *lxr)
 		lxr->data = (token*)realloc(lxr->data, (lxr->count+1) * sizeof(token));
 		if (lxr->data == NULL) memory_error();
 	}
-	lxr->data[lxr->count++] = (token){ "$", 0, END_TOKEN, lxr->line, lxr->col };
+	lxr->data[lxr->count++] = (token){ "END_OF_FILE", 0, END_TOKEN, lxr->line, lxr->col };
 }

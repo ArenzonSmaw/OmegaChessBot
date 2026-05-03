@@ -6,5 +6,6 @@ if ((x * y) >= 50)
     return 1;
 }
 else
-
+{
     return 0;
+}

@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include "parser.h"
 
-void alloc_tables(int*** ACTION, int*** GOTO);
+void alloc_tables(int*** ACTION, int*** GOTO, int states_count);
 /*
 		GETS: pointers to action and goto table
 		DOES: allocates memory for both tables by number of current states

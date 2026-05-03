@@ -19,7 +19,7 @@ int next_state;
 int FIRST[SYMBOLS_COUNT - TERMINALS_COUNT][TERMINALS_COUNT];
 int FOLLOW[SYMBOLS_COUNT - TERMINALS_COUNT][TERMINALS_COUNT];
 
-void alloc_tables(int*** ACTION, int*** GOTO)
+void alloc_tables(int*** ACTION, int*** GOTO, int states_count)
 {
 	/*
 		GETS: pointers to action and goto table
@@ -28,7 +28,7 @@ void alloc_tables(int*** ACTION, int*** GOTO)
 	*/
 
 	int i, j;
-	gnrtr.states_count = 20;
+	gnrtr.states_count = states_count;
 	next_state = 1;
 	gnrtr.ACTION = *ACTION;
 	gnrtr.GOTO = *GOTO;
@@ -505,7 +505,7 @@ int generate(items_arr rules, int rule_count, int*** goto_tbl, int*** action_tbl
 		DOES: generates and applies the goto and action tables based on the items array
 		RETS: generated tables via pointers
 	*/
-	alloc_tables(action_tbl, goto_tbl);
+	alloc_tables(action_tbl, goto_tbl, 40);
 	build_states(rules, rule_count);
 	fill_action(rules, rule_count);
 	apply_tables(goto_tbl, action_tbl);

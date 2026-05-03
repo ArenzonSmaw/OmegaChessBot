@@ -1109,6 +1109,7 @@ void free_rules()
 	free(rules);
 }
 
+
 void create_slr(FILE* fp)
 {
 	/*
@@ -1160,7 +1161,7 @@ int load_slr(FILE* fp)
 	}
 	else {
 		//allocate tables
-		alloc_tables(&SLR_ACTION, &SLR_GOTO);
+		alloc_tables(&SLR_ACTION, &SLR_GOTO, states_count);
 		fill_rules_arr();
 		//load goto table
 		for (i = 0; i < states_count; i++)
@@ -1186,6 +1187,7 @@ int load_slr(FILE* fp)
 		succeeded = 0;
 	}
 	fclose(fp);
+
 	return succeeded;
 }
 

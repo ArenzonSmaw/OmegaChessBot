@@ -42,7 +42,7 @@ int call_parse(parser** prsr, lexer* lxr, char* err, char* parser_file)
         print_errors((*prsr)->err_lst);
     }
 
-    free_err_list((*prsr)->err_lst);
+    free_err_list(&(*prsr)->err_lst);
     return successful;
 }
 
