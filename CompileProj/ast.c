@@ -1,6 +1,7 @@
 #include "ast.h"
 #include <stdlib.h>
 
+
 void fill_kind_to_data()
 {
 	//fills global array of data_type enum by node_kind enum

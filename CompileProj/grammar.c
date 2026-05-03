@@ -1,16 +1,5 @@
 #include "grammar.h"
-//
-//typedef enum {
-//	ID,
-//	LITERAL,
-//	TYPE,
-//	FACTOR,
-//	TERM,
-//	EXPRESSION,
-//	STATEMENT,
-//	PROGRAM,
-//	NON_TERMINALS_COUNT
-//} non_terminal;
+
 
 
 

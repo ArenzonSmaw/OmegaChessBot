@@ -24,6 +24,15 @@ typedef enum {
 	ERROR = 2
 } action;
 
+parser* init_parser(lexer* lexer, char* error_file);
+/*
+	GETS: pointer to lexer struct and error file name
+	RETS: parser structure with initiated values
+*/
 
 void parse(parser* prsr, char* parser_name);
+/*
+	GETS: pointer to parser struct and name of the parser file (to load/write the parser from/to)
+	RETS: Abstract Syntax Tree root via prsr->ast
+*/
 #endif

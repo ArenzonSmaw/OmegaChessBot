@@ -1,5 +1,6 @@
 #include "lexer.h"
 #include "error.h"
+#include <string.h>
 #pragma warning (disable: 4996)
 
 typedef enum STATES {
@@ -151,7 +152,11 @@ static void (*ACTION[NUM_OF_STATES][NUM_OF_INPUTS])(lexer*);
 void illegal_character(lexer* lxr)
 {
 	// character does not fit its position according to the grammar
-	err_append(lxr->err_list, error("ILLEGAL CHARACTER", "unexpected character: " + lxr->input[lxr->index], lxr->line, lxr->col));
+
+	char msg[MESSAGE_MAX_LENGTH] = "unexpected character: '";
+	char ch[3] = {lxr->input[lxr->index], '\'', '\0'};
+	strcat(msg, ch);
+	err_append(lxr->err_list, error("ILLEGAL CHARACTER", msg, lxr->line, lxr->col));
 }
 void unknown_character(lexer* lxr)
 {
@@ -939,6 +944,35 @@ void init_tables()
 } 
 
 
+lexer* lexer_init(char* inp, char* err)
+{
+	FILE* input = fopen(inp, "r"),
+		* error = fopen(err, "w");
+
+	lexer* lxr = (lexer*)malloc(sizeof(lexer));
+	int len, terminator;
+	if (lxr)
+	{
+		fseek(input, 0, SEEK_END);
+		len = ftell(input);
+		rewind(input);
+		lxr->input = (char*)malloc(sizeof(char) * (len + 1));
+		terminator = fread(lxr->input, sizeof(char), len, input);
+		lxr->input[terminator] = '\0';
+
+		lxr->index = 0;
+		lxr->line = 1;
+		lxr->col = 1;
+		lxr->count = 0;
+		lxr->data = NULL;
+		lxr->err_list = err_list(error);
+	}
+	else
+	{
+		memory_error();
+	}
+	return lxr;
+}
 
 #define input (lxr->input)
 #define index (lxr->index)
@@ -959,7 +993,6 @@ void tokenize(lexer *lxr)
 	lxr->count = 0;
 	lxr->line = lxr->col = 1;
 
-	lxr->err_list = err_list();
 
 	init_tables();
 

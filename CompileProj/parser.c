@@ -113,19 +113,22 @@ void produce_error_message(parser* prsr, token tkn)
 	*/
 	symbol i;
 	int count = 0;
-	char message[TOKEN_MAX_LENGTH] = "unexpected token '";
+	char message[MESSAGE_MAX_LENGTH] = "unexpected token '";
 	strcat(message, tkn.lexeme);
 	strcat(message, "', expected ");
-	for (i = 0; i < TERMINALS_COUNT; i++)
+	for (i = 0; i < TERMINALS_COUNT && count < 3; i++)
 	{
 		if (SLR_ACTION[i][prsr->state] != ERROR)
 		{
-			if (count > 0) strcat(message, " or ");
+			if (count > 0) 
+				strcat(message, " or ");
 			strcat(message, SYMBOL_TO_LEXEME[i]);
 			count++;
 		}
 	}
-	err_append(prsr->err_lst, error("syntax error", message, tkn.line, tkn.col));
+	if (count >= 3) 
+		strcat(message, "...");
+	err_append(prsr->err_lst, error("SYNTAX ERROR", message, tkn.line, tkn.col));
 }
 void syntax_error( parser* prsr) 
 {
@@ -144,6 +147,8 @@ void syntax_error( parser* prsr)
 	tkn = prsr->input[prsr->index];
 	while (prsr->recovering && prsr->index < prsr->input_size)
 		recovery_consume(prsr);
+	if (prsr->index == prsr->input_size)
+		prsr->recovering = -1;
 }
 
 void shift(parser* prsr) 
@@ -735,7 +740,7 @@ void reduce_new_stmt_list(parser* prsr, symbol lhs)
 {
 	// STMT_LIST -> STATEMENT
 	info* stmt = pop(&(prsr->stck));
-	int prev_state = top(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
 	AST node = init_ast(NULL, NODE_STMT_LIST, 1);
 	add_son(node, stmt->node);
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -750,7 +755,7 @@ void reduce_stmt_list(parser* prsr, symbol lhs)
 		* stmt_lst = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 
-	realloc_children(stmt_lst, stmt_lst->node->children_count + 1);
+	realloc_children(stmt_lst->node, stmt_lst->node->children_count + 1);
 	add_son(stmt_lst->node, stmt->node);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -1070,25 +1075,27 @@ void fill_rules_arr()
 		add_rule(stmt, (item[5]) { ifky, opbrck, expr, clbrck, block }, 5);				//  -56 /  55
 		add_rule(stmt, (item[5]) { elsky, opbrck, expr, clbrck, block }, 5);			//  -57 /  56
 		add_rule(stmt, (item[2]) { elsky, block }, 2);									//  -58 / 57
-																												// rule_num / rule_index
-		add_rule(stmt, (item[10]) { loop, opbrck, decl, param, arrow, expr, semcol, stmt, clbrck, block }, 10);	//  -59 /  58
-		add_rule(stmt, (item[3]) { loop, factor, block }, 3);													//  -60 /  59
-		add_rule(stmt_list, (item[2]) { stmt_list, stmt }, 2);													//  -61 /  60
-		add_rule(stmt_list, (item[1]) { stmt }, 1);																//  -62 /  61
-		add_rule(block, (item[3]) { opbrck, stmt_list, clbrck }, 3);											//  -63 /  62
-		add_rule(param, (item[3]) { id, colon, type }, 3);														//  -64 /  63
-		add_rule(param_list, (item[3]) { param_list, comma, param }, 3);										//  -65 /  64
-		add_rule(param_list, (item[1]) { param }, 1);															//  -66 /  65
-		add_rule(stmt, (item[4]) { use, colon, stmt, semcol }, 4);												//  -67 /  66
-		add_rule(stmt, (item[3]) { decl, param, semcol }, 3);													//  -68 /  67
-		add_rule(stmt, (item[5]) { decl, param, eq, expr, semcol }, 5);											//  -69 /  68
-		add_rule(stmt, (item[5]) { decl, id, eq, expr, semcol }, 5);											//  -70 /  69
-		add_rule(stmt, (item[3]) { decl, id, semcol }, 3);														//  -71 /  70
-		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);						//  -72 /  71
-		add_rule(prgrm, (item[1]) { stmt_list }, 1);															//  -73	/  72
-		add_rule(expr, (item[4]) { scan, opbrck, type, clbrck }, 4);											//  -74	/  73
-		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);											//	-75	/  74			
-														
+
+																						//  -59 /  58						
+		add_rule(stmt, (item[12]) { loop, opbrck, decl, param, eq, expr, arrow, expr, semcol, stmt, clbrck, block }, 12);
+																						// rule_num / rule_index
+		add_rule(stmt, (item[3]) { loop, factor, block }, 3);							//  -60 /  59
+		add_rule(stmt_list, (item[2]) { stmt_list, stmt }, 2);							//  -61 /  60
+		add_rule(stmt_list, (item[1]) { stmt }, 1);										//  -62 /  61
+		add_rule(block, (item[3]) { opcurl, stmt_list, clcurl }, 3);					//  -63 /  62
+		add_rule(param, (item[3]) { id, colon, type }, 3);								//  -64 /  63
+		add_rule(param_list, (item[3]) { param_list, comma, param }, 3);				//  -65 /  64
+		add_rule(param_list, (item[1]) { param }, 1);									//  -66 /  65
+		add_rule(stmt, (item[4]) { use, colon, stmt, semcol }, 4);						//  -67 /  66
+		add_rule(stmt, (item[3]) { decl, param, semcol }, 3);							//  -68 /  67
+		add_rule(stmt, (item[5]) { decl, param, eq, expr, semcol }, 5);					//  -69 /  68
+		add_rule(stmt, (item[5]) { decl, id, eq, expr, semcol }, 5);					//  -70 /  69
+		add_rule(stmt, (item[3]) { decl, id, semcol }, 3);								//  -71 /  70
+		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);//  -72 /  71
+		add_rule(prgrm, (item[1]) { stmt_list }, 1);									//  -73	/  72
+		add_rule(expr, (item[4]) { scan, opbrck, type, clbrck }, 4);					//  -74	/  73
+		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);					//	-75	/  74			
+		
 	}
 }
 void free_rules()
@@ -1143,9 +1150,9 @@ int load_slr(FILE* fp)
 		RETS: 1 if tables were loaded successfully, 0 otherwise
 	*/
 	int i, j;
-	int symbols, rules;
+	int symbols, rules, succeeded;
 
-	fscanf(fp, "%d %d\n", &states_count, &symbols);
+	fscanf(fp, "%d %d", &states_count, &symbols);
 	if (symbols != SYMBOLS_COUNT)
 	{
 		fclose(fp);
@@ -1160,7 +1167,7 @@ int load_slr(FILE* fp)
 		{
 			for (j = 0; j < SYMBOLS_COUNT; j++)
 			{
-				fscanf(fp, "%d ", &(SLR_GOTO[j][i]));
+				fscanf(fp, "%d", &(SLR_GOTO[j][i]));
 			}
 		}
 		//load action table
@@ -1172,14 +1179,40 @@ int load_slr(FILE* fp)
 			}
 		}
 	}
+	succeeded = 1;
 	fscanf(fp, "%d", &rules);
 	if (rules != RULES_NUM)
 	{
-		fclose(fp);
-		return 0;
+		succeeded = 0;
 	}
 	fclose(fp);
-	return 1;
+	return succeeded;
+}
+
+
+parser* init_parser(lexer* lxr, char* err)
+{
+	parser* prsr = (parser*)malloc(sizeof(parser));
+	FILE* err_file = fopen(err, "w");
+	if (prsr)
+	{
+		prsr->input = lxr->data;
+		prsr->input_size = lxr->count;
+
+		prsr->err_lst = err_list(err_file);
+		prsr->stck = init_stack();
+
+		prsr->ast = NULL;
+		prsr->index = 0;
+		prsr->state = 0;
+		prsr->recovering = 0;
+	}
+	else
+	{
+		prsr->recovering = 1;
+		memory_error();
+	}
+	return prsr;
 }
 
 void parse(parser* prsr, char* parser_name)
@@ -1216,7 +1249,6 @@ void parse(parser* prsr, char* parser_name)
 	fill_kind_to_data();
 
 	prsr->stck = init_stack();
-	prsr->err_lst = err_list();
 	prsr->index = 0;
 	prsr->recovering = 0;
 
@@ -1234,7 +1266,8 @@ void parse(parser* prsr, char* parser_name)
 		else if (act == ACCEPT)
 			accepted = 1;
 
-	} while (!accepted);
+	} while (!accepted && prsr->recovering != -1);
+	prsr->ast = pop(&(prsr->stck))->node;
 
 	free_rules();
 }

@@ -18,26 +18,60 @@ int IS_SCALAR[TYPE_ERROR + 1] = {
 	/*CHAR*/1, /*STRING*/0, /*VOID*/0, /*POINTER*/1, /*EXCEPTION*/0, /*ERROR*/0
 };
 int TYPE_WIDTH[TYPE_ERROR + 1] = {
-	/*INT*/4, /*FLOAT*/3, /*NATURAL*/1, /*RATIONAL*/2, /*BOOL*/4,
-	/*CHAR*/1, /*STRING*/2, /*VOID*/0, /*POINTER*/1, /*EXCEPTION*/5, /*ERROR*/6
+	/*INT*/1, /*FLOAT*/3, /*NATURAL*/0, /*RATIONAL*/2, /*BOOL*/0,
+	/*CHAR*/1, /*STRING*/-1, /*VOID*/-1, /*POINTER*/-1, /*EXCEPTION*/4, /*ERROR*/-1
 };
 
 
-void type_error() {}
-void declaration_error() {}
-void assignment_error() {}
-void signature_error() {}
-void controlflow_error() {}
-void prod_error(semanticer* smt, char title[21], char message[32], int line, int col) 
+void prod_error(semanticer* smt, char title[TITLE_MAX_LENGTH], char message[MESSAGE_MAX_LENGTH], char ident[TOKEN_MAX_LENGTH], int line, int col) 
 {
+	/*
+		GETS: pointer to semanticer struct, error title, message, and additional var name, line and col.
+		DOES: creates a new error and appends to smt->error. if ident not empty, concats it to error message
+	*/
+	int len = strlen(ident);
+	if (len > 0) {
+		strcat(message, ident);
+		strcat(message, "'.");
+	}
+	else {
+		strcat(message, ".");
+	}
 	err_append(smt->error, error(title, message, line, col));
 }
 
 type_kind wider_type(type_kind type1, type_kind type2)
 {
-	if (TYPE_WIDTH[type1] >= TYPE_WIDTH[type2])
-		return type1;
-	return type2;
+	// error propagation — silently pass through
+	if (type1 == TYPE_ERROR || type2 == TYPE_ERROR) return TYPE_ERROR;
+
+	// non-numeric types have no width — can't widen
+	if (TYPE_WIDTH[type1] < 0 || TYPE_WIDTH[type2] < 0) return TYPE_ERROR;
+
+	// CHAR widens to INT
+	if (type1 == TYPE_CHAR) type2 = TYPE_INT;
+	if (type2 == TYPE_CHAR) type2 = TYPE_INT;
+
+	return TYPE_WIDTH[type1] >= TYPE_WIDTH[type2] ? type1 : type2;
+}
+int type_can_contain(type_kind container, type_kind value)
+{
+	if (container == TYPE_ERROR || value == TYPE_ERROR) return 1;
+	if (container == value) return 1;
+
+	if (container == TYPE_EXCEPTION) return 1;
+
+	// CHAR -> INT widening
+	if (value == TYPE_CHAR && container == TYPE_INT) return 1;
+
+	// BOOL -> numeric widening
+	if (value == TYPE_BOOL) {
+		if (TYPE_WIDTH[container] >= 0) return 1;
+	}
+
+	if (TYPE_WIDTH[container] < 0 || TYPE_WIDTH[value] < 0) return 0;
+
+	return TYPE_WIDTH[container] >= TYPE_WIDTH[value];
 }
 int is_comparable(type_kind type1, type_kind type2)
 {
@@ -45,15 +79,6 @@ int is_comparable(type_kind type1, type_kind type2)
 	if (type1 == type2) return 1;
 	if (IS_NUMERIC[type1] && IS_NUMERIC[type2]) return 1;
 	return 0;
-}
-
-void init_semanticer(semanticer* smt)
-{
-	smt->current_scope = init_scope(0, NULL);
-	smt->in_function = 0;
-	smt->loop_depth = 0;
-	
-	smt->error = err_list();
 }
 
 symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, int scope_level, int line, int col, int offset)
@@ -181,36 +206,40 @@ void exit_scope(semanticer* smt)
 	free(temp);
 }
 
-type_kind start_handler(semanticer* smt)
+void analyze(semanticer* smt, AST ast)
 {
-	return analyze(smt, smt->ast->children[0]);
+	//analyzes the current ast node via dipatching handlers
+	handle handler = HANDLE_DISPATCH[ast->kind];
+	handler(smt, ast);
+}
+void start_handler(semanticer* smt, AST ast)
+{
+	//handles proram start, calls for analysis of child
+	analyze(smt, ast->children[0]);
 }
 
-type_kind program_handler(semanticer* smt)
+void program_handler(semanticer* smt, AST ast)
 {
+	//handles program node
 	int i;
-	AST ast = smt->ast;
 
 	for (i = 0; i < ast->children_count; i++)
 		analyze(smt, ast->children[i]);
-
-	return type_void();
 }
-type_kind func_declare_handler(semanticer* smt, AST ast)
+void func_declare_handler(semanticer* smt, AST ast)
 {
+	//handles function declaration
 	int i;
-	AST ast = smt->ast;
 	AST name_param = ast->children[0];   
 	AST param_list = ast->children[1];  
 	AST block = ast->children[2];   
 	AST param;
 
 	char* fname = name_param->children[0]->data.name;
-	type_kind return_type = node_type_to_semantic(name_param->children[1]->type);
+	type_kind return_type = name_param->children[1]->type;
 
-	if (scope_lookup_current(smt, fname)) {
-		declaration_error(smt, ast->line, ast->col,
-			"redeclaration of function '%s'", fname);
+	if (symbol_exist(smt->current_scope, fname)) {
+		prod_error(smt, "DECLARATION ERROR", "redeclaration of function '", fname, ast->line, ast->col);
 	}
 
 	symbol_link* fsym = create_symbol(fname, FUNCTION, return_type,
@@ -238,16 +267,13 @@ type_kind func_declare_handler(semanticer* smt, AST ast)
 
 	ast->type = return_type;
 }
-type_kind var_declare_handler(semanticer* smt, AST ast)
+void var_declare_handler(semanticer* smt, AST ast)
 {
-	/*
-		GETS: pointer to semanticer struct
-		DOES: 
-	*/
+	//handles variable declaration
+
 	char* name;
 	type_kind declared_type;
 	type_kind init_type;
-	AST ast = smt->ast;
 	AST decl = ast->children[0];
 
 	if (decl->kind == NODE_PARAMETER) {
@@ -261,15 +287,15 @@ type_kind var_declare_handler(semanticer* smt, AST ast)
 
 	if (symbol_exist(smt->current_scope, name)) 
 	{
-		declaration_error(smt, ast->line, ast->col, "redeclaration of '%s'", name);
+		prod_error(smt, "DECLARATION ERROR", "redeclaration of '", name, ast->line, ast->col);
 	}
 	init_type = TYPE_VOID;
 	if (ast->children_count > 1 && ast->children[1] != NULL) {
 		analyze(smt, ast->children[1]);
 		init_type = ast->children[1]->type;
 
-		if (declared_type != init_type) {
-				declaration_error(); //
+		if (!type_can_contain(declared_type, init_type)) {
+			prod_error(smt, "TYPE ERROR", "incompatible declare and initiation types for '", name, ast->line, ast->col);
 		}
 	}
 	symbol_link* sym = create_symbol(name, VARIABLE, declared_type, smt->current_scope->level,
@@ -279,38 +305,38 @@ type_kind var_declare_handler(semanticer* smt, AST ast)
 	ast->type = declared_type;
 }
 
-type_kind assignment_handler(semanticer* smt, AST ast)
+void assignment_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles assignment nodes 
+
 	AST ident = ast->children[0];
 	AST rhs = ast->children[1];
 	type_kind rhs_type;
 
 	symbol_link* sym = get_symbol(smt, ident->data.name);
 	if (!sym) {
-		assignment_error(smt, ident->line, ident->col,
-			"assignment to undeclared variable '%s'", ident->data.name); //
+		prod_error(smt, "ASSIGNMENT ERROR", "assignment to undeclared variable '", ident->data.name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
-	else if (sym->kind == CONSTANT) {
+	/*else if (sym->kind == CONSTANT) {
 		assignment_error(smt, ident->line, ident->col,
 			"assignment to constant '%s'", ident->data.name);
-	}
+	}*/
 
 	analyze(smt, rhs);
 	rhs_type = rhs->type;
 
-	if (sym->type != rhs_type) {
-		type_error(smt, ast->line, ast->col, "type mismatch: cannot assign %d to '%s' of type %d",
-			rhs_type, sym->name, sym->type);
+	if (!type_can_contain(sym->type, rhs_type)) {
+		prod_error(smt, "TYPE ERROR", "invalid assignment type for variable", sym->name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 
 	ast->type = rhs->type;  
 }
-type_kind parameter_handler(semanticer* smt, AST ast)
+void parameter_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles parameter nodes
+
 	AST ident = ast->children[0];
 	AST type_node = ast->children[1];
 
@@ -318,8 +344,7 @@ type_kind parameter_handler(semanticer* smt, AST ast)
 	type_kind ptype = type_node->type;
 
 	if (symbol_exist(smt, name)) {
-		signature_error(smt, ast->line, ast->col,//
-			"duplicate parameter name '%s'", name);
+		prod_error(smt, "SIGNATURE ERROR", "duplicate parameter name '", name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else {
@@ -327,20 +352,21 @@ type_kind parameter_handler(semanticer* smt, AST ast)
 			smt->current_scope->level,
 			ast->line, ast->col,
 			smt->current_scope->offset_next++);
-		scope_insert(smt, sym);
+		enter_symbol(smt->current_scope, sym);
 		ast->type = type_node->type;
 	}
 }
-type_kind type_cast_handler(semanticer* smt, AST ast) 
+void type_cast_handler(semanticer* smt, AST ast) 
 {
+	//handles type casting
 	AST type = ast->children[0];
 	AST expr = ast->children[1];
 	
 	analyze(smt, expr);
 
-	if (!IS_SCALAR[type->type] || !IS_SCALAR[expr->type])
+	if (!type_can_contain(type->type, expr->type))
 	{
-		type_error();
+		prod_error(smt, "TYPE ERROR", "incompatible types conversion", "\0", ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else
@@ -349,8 +375,9 @@ type_kind type_cast_handler(semanticer* smt, AST ast)
 	}
 	return ast->type;
 }
-type_kind stmt_list_handler(semanticer* smt, AST ast)
+void stmt_list_handler(semanticer* smt, AST ast)
 {
+	//handles statement list node
 	int i;
 	for (i = 0; i < ast->children_count; i++)
 	{
@@ -359,18 +386,18 @@ type_kind stmt_list_handler(semanticer* smt, AST ast)
 	}
 }
 
-type_kind if_handler(semanticer* smt, AST ast)
+void if_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles if node
+
 	AST cond = ast->children[0];
 	AST block = ast->children[1];
 	type_kind cond_type;
 
 	analyze(smt, cond);
 	cond_type = cond->type;
-	if (cond_type == TYPE_VOID || cond_type == TYPE_STRING) {
-		type_error(smt, cond->line, cond->col,
-			"condition must be a scalar type");
+	if (!IS_SCALAR[cond_type]) {
+		prod_error(smt, "TYPE ERROR", "condition must be a scalar type", "\0", ast->line, ast->col);
 	}
 
 	//block
@@ -386,9 +413,9 @@ type_kind if_handler(semanticer* smt, AST ast)
 	}
 	ast->type = TYPE_VOID;
 }
-type_kind loop_handler(semanticer* smt, AST ast)
+void loop_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles loop node
 
 	enter_scope(smt);
 	smt->loop_depth++;
@@ -398,9 +425,8 @@ type_kind loop_handler(semanticer* smt, AST ast)
 		AST block = ast->children[1];
 
 		analyze(smt, cond);
-		if (cond->type == TYPE_VOID || cond->type == TYPE_STRING) {
-			emit_error(smt, cond->line, cond->col,
-				"loop condition must be a scalar type");
+		if (!IS_SCALAR[cond->type]) {
+			prod_error(smt, "TYPE ERROR", "condition must be of scalar type", "\0", ast->line, ast->col);
 		}
 		analyze(smt, block);
 	}
@@ -414,8 +440,7 @@ type_kind loop_handler(semanticer* smt, AST ast)
 
 		analyze(smt, end_val);
 		if (end_val->type != TYPE_INT && end_val->type != TYPE_NATURAL) {
-			type_error(smt, end_val->line, end_val->col,
-				"loop bound must be an integer type");
+			prod_error(smt, "TYPE ERROR", "loop bound must be an integer type", "\0", ast->line, ast->col);
 		}
 
 		analyze(smt, step);
@@ -427,62 +452,65 @@ type_kind loop_handler(semanticer* smt, AST ast)
 	ast->type = TYPE_VOID;
 }
 
-type_kind return_handler(semanticer* smt, AST ast)
+void return_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles return node
 	AST expr = ast->children[0];
 
 	analyze(smt, expr);
-	if (expr->type != smt->current_return_type)
-		type_error();
+	if (!type_can_contain(smt->current_return_type, expr->type))
+		prod_error(smt, "TYPE ERROR", "incompatible return type", "\0", ast->line, ast->col);
 	else
 		ast->type = expr->type;
 }
-type_kind break_handler(semanticer* smt, AST ast)
+void break_handler(semanticer* smt, AST ast)
 {
+	//handles break node
 	if (smt->loop_depth == 0){
-		controlflow_error();
+		prod_error(smt, "CONTROLFLOW ERROR", "invalid break outside of a loop", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
 	}
 	else
 		smt->ast->type = TYPE_VOID;
 }
-type_kind pass_handler(semanticer* smt, AST ast)
+void pass_handler(semanticer* smt, AST ast)
 {
+	//handles pass node
 	if (smt->loop_depth == 0)
 	{
-		controlflow_error();
-		smt->ast->type = TYPE_ERROR;
+		prod_error(smt, "CONTROLFLOW ERROR", "invalid pass outside of a loop", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
 	}
 	else
-		smt->ast->type = TYPE_VOID;
+		ast->type = TYPE_VOID;
 }
-type_kind ident_handler(semanticer* smt, AST ast)
+void ident_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles identifier node
 	symbol_link* sym = get_symbol(smt->current_scope, ast->data.name);
 
 	if (!sym) {
-		declaration_error(smt, ast->line, ast->col,
-			"undefined identifier '%s'", ast->data.name);
+		prod_error(smt, "DECLARATION ERROR", "undefined identifier '", ast->data.name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
-		return;
 	}
-
-	ast->type = ast_type_from_semantic(sym->type);
+	else
+		ast->type = sym->type;
 }
-type_kind literal_handler(semanticer* smt, AST ast)
+void literal_handler(semanticer* smt, AST ast)
 {
+	//handles literal nodes
 	if (ast->type == TYPE_ERROR) {
-		type_error(smt, ast->line, ast->col, "unknown literal type");
+		prod_error(smt, "TYPE ERROR", "unknown literal type", "\0", ast->line, ast->col);
 	}
 }
-type_kind underline_handler(semanticer* smt, AST ast)
+void underline_handler(semanticer* smt, AST ast)
 {
+
 	smt->ast->type = TYPE_VOID;
 }
-type_kind arithmetic_handler(semanticer* smt, AST ast)
+void arithmetic_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles arithmetic nodes
 	AST left = ast->children[0];
 	AST right = ast->children[1];
 
@@ -490,8 +518,8 @@ type_kind arithmetic_handler(semanticer* smt, AST ast)
 	analyze(smt, right);
 
 	if (!IS_NUMERIC[left->type] || !IS_NUMERIC[right->type]) {
-		type_error(smt, ast->line, ast->col,
-			"arithmetic operands must be numeric types");
+		prod_error(smt, "TYPE ERROR", "arithmetic operands must be numeric types", "\0", ast->line, ast->col);
+
 		ast->type = TYPE_ERROR;
 	}
 	else {
@@ -499,9 +527,9 @@ type_kind arithmetic_handler(semanticer* smt, AST ast)
 	}
 }
 
-type_kind logical_handler(semanticer* smt, AST ast)
+void logical_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles logical nodes
 	AST left = ast->children[0];
 	AST right = ast->children[1];
 
@@ -509,15 +537,15 @@ type_kind logical_handler(semanticer* smt, AST ast)
 	analyze(smt, right);
 
 	if (!IS_SCALAR[left->type] || !IS_SCALAR[right->type]) {
-		type_error(smt, ast->line, ast->col,
-			"logical operators require scalar operands");
+		prod_error(smt, "TYPE ERROR", "logical operators require scalar operands", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
 	}
 
 	ast->type = TYPE_BOOL;
 }
-type_kind bitwise_handler(semanticer* smt, AST ast)
+void bitwise_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles bitwise operations nodes
 	AST left = ast->children[0];
 	AST right = ast->children[1];
 
@@ -525,80 +553,75 @@ type_kind bitwise_handler(semanticer* smt, AST ast)
 	analyze(smt, right);
 
 	if (!IS_INTEGER[left->type] || !IS_INTEGER[right->type]) {
-		type_error(smt, ast->line, ast->col,
-			"bitwise operators require integer operands");
+		prod_error(smt, "TYPE ERROR", "bitwise operators require interer operands", "\0", ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else
 		ast->type = wider_type(left->type, right->type);
 }
-type_kind logical_not_handler(semanticer* smt, AST ast)
+void logical_not_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles logical not (!)
 	AST operand = ast->children[0];
 
 	analyze(smt, operand);
 
 	if (!IS_SCALAR[operand->type]) {
-		type_error(smt, ast->line, ast->col,
-			"logical not requires a scalar operand");
+		prod_error(smt, "TYPE ERROR", "logical '!' requires a scalar operand", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
 	}
 
 	ast->type = TYPE_INT;
 }
-type_kind bitwise_not_handler(semanticer* smt, AST ast)
+void bitwise_not_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles bitwise not (!!)
 	AST operand = ast->children[0];
 
 	analyze(smt, operand);
 
 	if (!IS_INTEGER[operand->type]) {
-		type_error(smt, ast->line, ast->col,
-			"bitwise not requires an integer operand");
+		prod_error(smt, "TYPE ERROR", "bitwise '!' requires an integer operand", "\0", ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else
 		ast->type = operand->type;
 }
-type_kind comparison_handler(semanticer* smt, AST ast)
+void comparison_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles comparisson nodes
 	AST left = ast->children[0];
 	AST right = ast->children[1];
 
 	analyze(smt, left);
 	analyze(smt, right);
 
-	/*if (!is_comparable(left->type, right->type)) {
-		type_error(smt, ast->line, ast->col,
-			"comparison between incompatible types");
-	}*/
+	if (!is_comparable(left->type, right->type)) {
+		prod_error(smt, "TYPE ERROR", "comparison between incompatible types", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
+	}
 
 	ast->type = TYPE_BOOL;  
 }
-type_kind func_call_handler(semanticer* smt, AST ast)
+void func_call_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
+	//handles function call node
 	AST ident = ast->children[0];
 	type_kind temp;
 	symbol_link* sym = get_symbol(smt->current_scope, ident->data.name);
 	if (!sym) {
-		declaration_error(smt, ident->line, ident->col,
-			"call to undeclared function '%s'", ident->data.name);
+		prod_error(smt, "DECLARATION ERROR", "call to undeclared function '", ident->data.name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else if (sym->kind != FUNCTION) {
-		signature_error(smt, ident->line, ident->col,
-			"'%s' is not a function", ident->data.name);
+		prod_error(smt, "SIGNATUME ERROR", "function call with invalid function identifier '", ident->data.name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else {
 		int arg_count = ast->children_count - 1;
 		if (arg_count != sym->param_count) {
-			signature_error(smt, ast->line, ast->col,
-				"'%s' expects %d arguments but got %d",
-				sym->name, sym->param_count, arg_count);
+			prod_error(smt, "SIGNATURE ERROR", "argument number does not match", "\0", ast->line, ast->col);
+			ast->type = TYPE_ERROR;
 		}
 		temp = smt->current_return_type;
 		smt->current_return_type = ast->kind;
@@ -608,10 +631,9 @@ type_kind func_call_handler(semanticer* smt, AST ast)
 		ast->type = sym->type;  // return type of the function
 	}
 }
-type_kind block_handler(semanticer* smt, AST ast)
+void block_handler(semanticer* smt, AST ast)
 {
-	AST ast = smt->ast;
-
+	//handles block node
 	for (int i = 0; i < ast->children_count; i++) {
 		analyze(smt, ast->children[i]);
 	}
@@ -619,8 +641,9 @@ type_kind block_handler(semanticer* smt, AST ast)
 	ast->type = TYPE_VOID;
 }
 
-type_kind init_dispatch_table()
+void init_dispatch_table()
 {
+	//fills the HANDLER DISPATCH lookup table
 	HANDLE_DISPATCH[NODE_START] = start_handler;
 	HANDLE_DISPATCH[NODE_PROGRAM] = program_handler;
 
@@ -669,14 +692,28 @@ type_kind init_dispatch_table()
 	HANDLE_DISPATCH[NODE_BLOCK] = block_handler;
 }
 
-type_kind analyze(semanticer* smt, AST ast)
+
+
+semanticer* init_semanticer(AST ast, char* error_file)
 {
-	handle handler = HANDLE_DISPATCH[ast->kind];
-	return handler(smt, ast);
+	semanticer* smt = (semanticer*)malloc(sizeof(semanticer));
+
+	if (smt)
+	{
+		smt->ast = 
+		smt->error = err_list(error_file);
+		smt->current_scope = init_scope(0, NULL);
+		smt->in_function = 0;
+		smt->loop_depth = 0;
+	}
+	else
+		memory_error();
+	return smt;
 }
 
 void semanticize(semanticer* smt)
 {
-	init_semanticer(smt);
+	//semanticizes the input ast, calls for the recursive analysis of ast
+	init_dispatch_table();
 	analyze(smt, smt->ast);
 }

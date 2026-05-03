@@ -51,9 +51,16 @@ typedef enum INPUT {
 } INPUT;
 
 
-void tokenize(lexer *lxr);
+lexer* lexer_init(char* inp_file, char* err_file);
 /*
-	GETS: pointer to lexer structure
+	GETS: pnames of input and error files
+	DOES: creates and initiates lexer structure
+	RETS: initiated lexer structure
+*/
+
+void tokenize(lexer* lxr);
+/*
+	GETS: pointer to lexer structure 
 	DOES: iterates over lxr->input and builds array of tokens
 	RETS: array of token via lxr->data
 */

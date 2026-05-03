@@ -13,7 +13,8 @@ typedef struct {
     char* break_label;
 } context;
 
-void init_context(context* ctx, FILE* out, scope global);
+
+context* init_context(FILE* out, scope global);
 
 void code_generate(context* ctx, AST root);
 

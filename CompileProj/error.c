@@ -18,18 +18,23 @@ error_message* error(char title[TITLE_MAX_LENGTH], char message[MESSAGE_MAX_LENG
 	}
 	return er;
 }
-void print_error(error_message *msg)
+void print_error(error_message *msg, FILE* out)
 {
-	printf("%s: %s, At: Line:%d, Col:%d.", msg->error_title, msg->error_message, msg->line, msg->col);
+	fprintf(out,  "%s: %s, At: Line:%d, Col:%d.\n", msg->error_title, msg->error_message, msg->line, msg->col);
 }
 
-error_list err_list()
+error_list err_list(FILE *err_out)
 {
-	error_list lst = (error_list)malloc(sizeof(error_link));
-	if (lst) {
-		lst->msg = NULL;
-		lst->next = lst;
-		lst->prev = lst;
+	error_list lst = (error_list)malloc(sizeof(error_node));
+	lst->msg = (error_link)malloc(sizeof(error_message));
+	if (lst->msg) {
+		strcpy(lst->msg->error_message, "\0");
+		strcpy(lst->msg->error_title, "\0");
+		lst->msg->line = 0;
+		lst->msg->col = 0;
+		lst->msg->next = lst->msg;
+		lst->msg->prev = lst->msg;
+		lst->out = err_out;
 	}
 	else
 		memory_error();
@@ -38,33 +43,52 @@ error_list err_list()
 
 int err_is_empty(error_list lst)
 {
-	return lst->next->msg == NULL;
+	return !strcmp(lst->msg->next->error_title, "\0");
 }
 
 void err_append(error_list lst, error_message* msg)
 {
-	error_list temp = (error_list)malloc(sizeof(error_link));
+	error_link temp = (error_link)malloc(sizeof(error_message));
 	if (temp == NULL) memory_error();
-	temp->msg = msg;
+	temp = msg;
 
-	temp->next = lst;
-	temp->prev = lst->prev;
+	temp->next = lst->msg;
+	temp->prev = lst->msg->prev;
 	
-	lst->prev = temp;
+	lst->msg->prev = temp;
 	temp->prev->next = temp;
 }
 
 
 void print_errors(error_list lst)
 {
-	while (!err_is_empty(lst))
+	error_link temp = lst->msg->next;
+	while (temp != lst->msg)
 	{
-		print_error(lst->msg);
+		print_error(temp, lst->out);
+		temp = temp->next;
 	}
+}
+
+void free_err_list(error_list* lst)
+{
+	error_link temp = (*lst)->msg->next;
+	error_link prev;
+	fclose((*lst)->out);
+
+	while (temp != (*lst)->msg)
+	{
+		prev = temp;
+		temp = temp->next;
+		free(prev);
+	}
+	free(temp);
+	free(*lst);
+	*lst = NULL;
 }
 
 void memory_error()
 {
-	printf("memory!");
+	printf("ran out of allocatable memory! exiting.");
 	exit(1);
 }

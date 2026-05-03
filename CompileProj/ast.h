@@ -80,9 +80,9 @@ typedef enum {
 	NONE = 3
 }data_type;
 
-data_type KIND_TO_TYPE[KIND_COUNT];
-void fill_kind_to_type();
+data_type KIND_TO_DATA[KIND_COUNT];
 //fills the kind_to_type array
+void fill_kind_to_data();
 
 
 
