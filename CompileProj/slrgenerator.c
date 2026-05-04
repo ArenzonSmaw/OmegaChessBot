@@ -468,8 +468,9 @@ void fill_action(items_arr rules, int count)
 	}
 
 	//accept rule
-	state_idx = gnrtr.GOTO[END_TOKEN][0];
-	gnrtr.ACTION[S_TAG][state_idx] = ACCEPT;
+	gnrtr.GOTO[S_TAG][0] = 0;
+	gnrtr.ACTION[END_TOKEN][0] = ACCEPT;
+	
 }
 void free_states()
 {

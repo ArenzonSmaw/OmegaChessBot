@@ -11,7 +11,7 @@
 
 #define START_STATE 0
 
-#define RULES_NUM 75
+#define RULES_NUM 77
 
 items_arr rules;
 int rule_index;
@@ -36,7 +36,7 @@ void fill_terminal_to_kind()
 {
 	//fills TERMINAL_TO_KIND table 
 	symbol i;
-	for (i = 0; i < KIND_COUNT; i++)
+	for (i = 0; i < TERMINALS_COUNT; i++)
 	{
 		TERMINAL_TO_KIND[i] = -1;
 	}
@@ -77,6 +77,10 @@ void fill_terminal_to_kind()
 	TERMINAL_TO_KIND[DBL_MOD] = NODE_QUO;
 	TERMINAL_TO_KIND[NOT] = NODE_LOG_NOT;
 	TERMINAL_TO_KIND[NOTNOT] = NODE_BIT_NOT;
+
+	TERMINAL_TO_KIND[DECLARE] = NODE_VAR_DECLARE;
+	TERMINAL_TO_KIND[IF] = NODE_IF;
+
 }
 
 void free_all(info* ptr)
@@ -192,9 +196,9 @@ void reduce_function_call(parser* prsr, symbol lhs)
 	id = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
 	
-	node = init_ast(NULL, NODE_FUNC_CALL, 2);
-	insert_son(node, id, 0);
-	insert_son(node, exprs, 1);
+	node = init_ast(NULL, NODE_FUNC_CALL, 2, id->node->line, id->node->col);
+	insert_son(node, id->node, 0);
+	insert_son(node, exprs->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -216,9 +220,9 @@ void reduce_cast(parser* prsr, symbol lhs)
 	l_col = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
 
-	node = init_ast(NULL, NODE_TYPE_CAST, 2);
-	insert_son(node, type, 0);
-	insert_son(node, id, 1);
+	node = init_ast(NULL, NODE_TYPE_CAST, 2, l_col->node->line, l_col->node->col);
+	insert_son(node, type->node, 0);
+	insert_son(node, id->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 
@@ -307,7 +311,7 @@ void reduce_list(parser* prsr, symbol lhs)
 	prev_state = top(&(prsr->stck))->state;
 
 	realloc_children(list->node, list->node->children_size + 1);
-	insert_son(list->node, item, list->node->children_count++);
+	insert_son(list->node, item->node, list->node->children_count);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), list->tkn, list->node, prsr->state);
@@ -326,9 +330,9 @@ void reduce_param(parser* prsr, symbol lhs)
 	colon = pop(&(prsr->stck));
 	id = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
-	node = init_ast(NULL, NODE_PARAMETER, 2);
-	insert_son(node, type, 0);
-	insert_son(node, id, 1);
+	node = init_ast(NULL, NODE_PARAMETER, 2, id->node->line, id->node->col);
+	insert_son(node, type->node, 0);
+	insert_son(node, id->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -349,7 +353,7 @@ void reduce_use(parser* prsr, symbol lhs)
 	use = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
 
-	node = init_ast(NULL, NODE_USE_DECLARE, 1);
+	node = init_ast(NULL, NODE_USE_DECLARE, 1, use->node->line, use->node->col);
 	add_son(node, stmt->node);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -372,10 +376,10 @@ void reduce_func_declare(parser* prsr, symbol lhs)
 		* declare = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 
-	AST node = init_ast(NULL, NODE_FUNC_DECLARE, 3);
-	insert_son(node, param, 0);
-	insert_son(node, param_list, 1);
-	insert_son(node, block, 2);
+	AST node = init_ast(NULL, NODE_FUNC_DECLARE, 3, declare->node->line, declare->node->col);
+	insert_son(node, param->node, 0);
+	insert_son(node, param_list->node, 1);
+	insert_son(node, block->node, 2);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -398,9 +402,9 @@ void reduce_var_declare_full(parser* prsr, symbol lhs)
 		* declare = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 
-	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
-	insert_son(node, param, 0);
-	insert_son(node, expr, 1);
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2, declare->node->line, declare->node->col);
+	insert_son(node, param->node, 0);
+	insert_son(node, expr->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -420,9 +424,9 @@ void reduce_var_declare_half(parser* prsr, symbol lhs)
 		* id = pop(&(prsr->stck)),
 		* declare = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
-	insert_son(node, id, 0);
-	insert_son(node, expr, 1);
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2, declare->node->line, declare->node->col);
+	insert_son(node, id->node, 0);
+	insert_son(node, expr->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -440,8 +444,8 @@ void reduce_var_declare_type(parser* prsr, symbol lhs)
 		* param = pop(&(prsr->stck)),
 		* declare = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
-	insert_son(node, param, 0);
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2, declare->node->line, declare->node->col);
+	insert_son(node, param->node, 0);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -457,8 +461,8 @@ void reduce_var_declare_empty(parser* prsr, symbol lhs)
 		* id = pop(&(prsr->stck)),
 		* declare = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2);
-	insert_son(node, id, 0);
+	AST node = init_ast(NULL, NODE_VAR_DECLARE, 2, declare->node->line, declare->node->col);
+	insert_son(node, id->node, 0);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -475,7 +479,7 @@ void reduce_loop_while(parser* prsr, symbol lhs)
 		* factor = pop(&(prsr->stck)),
 		* loop = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	loop->node = init_ast(loop->tkn, NODE_LOOP, 2);
+	loop->node = init_ast(loop->tkn, NODE_LOOP, 2, loop->node->line, loop->node->col);
 	insert_son(loop->node, factor, 0);
 	insert_son(loop->node, block, 1);
 
@@ -500,10 +504,10 @@ void reduce_loop_for(parser* prsr, symbol lhs)
 		* opbrck = pop(&(prsr->stck)),
 		* loop = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST iterator = init_ast(NULL, NODE_VAR_DECLARE, 2);
+	AST iterator = init_ast(NULL, NODE_VAR_DECLARE, 2, param->node->line, param->node->col);
 	insert_son(iterator, param, 0);
 	insert_son(iterator, expr, 1);
-	loop->node = init_ast(loop->tkn, NODE_LOOP, 3);
+	loop->node = init_ast(loop->tkn, NODE_LOOP, 3, loop->node->line, loop->node->col);
 	insert_son(loop->node, iterator, 0);
 	insert_son(loop->node, stmt, 1);
 	insert_son(loop->node, block, 2);
@@ -657,7 +661,7 @@ void reduce_assign_eq(parser* prsr, symbol lhs)
 		* eq = pop(&(prsr->stck)),
 		* param = pop(&(prsr));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2);
+	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2, param->node->line, param->node->col);
 	insert_son(node, param->node, 0);
 	insert_son(node, expr->node, 1);
 
@@ -678,11 +682,11 @@ void reduce_assign_inc_bin(parser* prsr, symbol lhs)
 		* id = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 
-	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2);
-	AST incr = init_ast(NULL, TERMINAL_TO_KIND[oprt->tkn->type], 2);
-	insert_son(incr, id, 0);
-	insert_son(incr, expr, 1);
-	insert_son(node, id, 0);
+	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2, id->node->line, id->node->col);
+	AST incr = init_ast(NULL, TERMINAL_TO_KIND[oprt->tkn->type], 2, oprt->node->line, oprt->node->col);
+	insert_son(incr, id->node, 0);
+	insert_son(incr, expr->node, 1);
+	insert_son(node, id->node, 0);
 	insert_son(node, incr, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -701,16 +705,16 @@ void reduce_assign_inc_unary(parser* prsr, symbol lhs)
 		* id = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 	node_kind kind = TERMINAL_TO_KIND[oprt->tkn->type];
-	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2);
-	AST incr = init_ast(NULL, kind, 2);
+	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2, id->node->line, id->node->col);
+	AST incr = init_ast(NULL, kind, 2, oprt->node->line, oprt->node->col);
 	token* one = (token*)malloc(sizeof(token));
 	if (kind == NODE_ADD || kind == NODE_SUB)
 		*one = (token){ "1", 1, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
 	else
 		*one = (token){ "2", 2, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
-	insert_son(incr, id, 0);
+	insert_son(incr, id->node, 0);
 	insert_son(incr, create_leaf(one, LITERAL), 1);
-	insert_son(node, id, 0);
+	insert_son(node, id->node, 0);
 	insert_son(node, incr, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -741,7 +745,7 @@ void reduce_new_stmt_list(parser* prsr, symbol lhs)
 	// STMT_LIST -> STATEMENT
 	info* stmt = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_STMT_LIST, 1);
+	AST node = init_ast(NULL, NODE_STMT_LIST, 1, stmt->node->line, stmt->node->col);
 	add_son(node, stmt->node);
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
@@ -771,7 +775,7 @@ void reduce_return(parser* prsr, symbol lhs)
 		* expr = pop(&(prsr->stck)),
 		* ret = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST node = init_ast(NULL, NODE_RETURN, 1);
+	AST node = init_ast(NULL, NODE_RETURN, 1, ret->node->line, ret->node->col);
 	insert_son(node, expr->node, 0);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -862,6 +866,8 @@ void fill_reduction_tbl()
 	REDUCTION[55] = reduce_if;
 	REDUCTION[56] = reduce_else_if;
 	REDUCTION[57] = reduce_else;
+	REDUCTION[75] = reduce_basic_rec_case;
+	REDUCTION[76] = reduce_basic_rec_case;
 
 	//one word statements
 	REDUCTION[42] = REDUCTION[51] = REDUCTION[52] = reduce_stmt;
@@ -944,6 +950,8 @@ void fill_rules_arr()
 		logic = {LOGIC_EXPR, NON_TERMINAL},
 		expr = {EXPRESSION, NON_TERMINAL},
 		incr = {INCREMENTAL, NON_TERMINAL},
+		if_stmt = {IF_STMT, NON_TERMINAL},
+		cond_stmt = {COND_STMT, NON_TERMINAL},
 		stmt = {STATEMENT, NON_TERMINAL },
 		stmt_list = {STMT_LIST, NON_TERMINAL },
 		block = {BLOCK, NON_TERMINAL },
@@ -1009,21 +1017,23 @@ void fill_rules_arr()
 		elsky = {ELSE, TERMINAL},
 		chck = {CHECK,TERMINAL },
 		excp = {EXCEPTION, TERMINAL },
+
+		end_token = {END_TOKEN, TERMINAL},
 		grammar_start = {S_TAG, NON_TERMINAL}
 	;
 	{
 		//rules array initiation and fill
-		init_rules_arr(RULES_NUM);							// rule_num / rule_index
-		add_rule(grammar_start, (item[1]) { prgrm }, 1);	//   -1  /   0
-		add_rule(literal, (item[1]) { bool_lit }, 1);		//   -2  /   1
-		add_rule(literal, (item[1]) { int_lit }, 1);		//   -3  /   2
-		add_rule(literal, (item[1]) { flt_lit }, 1);		//   -4  /   3
-		add_rule(literal, (item[1]) { rat_lit }, 1);		//   -5  /   4
-		add_rule(literal, (item[1]) { chr_lit }, 1);		//   -6  /   5
-		add_rule(literal, (item[1]) { str_lit }, 1);		//   -7  /   6
-		add_rule(factor, (item[1]) { literal }, 1);			//   -8  /   7
-		add_rule(factor, (item[1]) { underline }, 1);		//   -9  /   8
-		add_rule(factor, (item[1]) { id }, 1);				//	 -10 /	 9
+		init_rules_arr(RULES_NUM);									// rule_num / rule_index
+		add_rule(grammar_start, (item[1]) { prgrm }, 1);			//   -1  /   0
+		add_rule(literal, (item[1]) { bool_lit }, 1);				//   -2  /   1
+		add_rule(literal, (item[1]) { int_lit }, 1);				//   -3  /   2
+		add_rule(literal, (item[1]) { flt_lit }, 1);				//   -4  /   3
+		add_rule(literal, (item[1]) { rat_lit }, 1);				//   -5  /   4
+		add_rule(literal, (item[1]) { chr_lit }, 1);				//   -6  /   5
+		add_rule(literal, (item[1]) { str_lit }, 1);				//   -7  /   6
+		add_rule(factor, (item[1]) { literal }, 1);					//   -8  /   7
+		add_rule(factor, (item[1]) { underline }, 1);				//   -9  /   8
+		add_rule(factor, (item[1]) { id }, 1);						//	 -10 /	 9
 																				// add_rule(factor, (item[1]) { id }, 1);									//rule_num / rule_index
 		add_rule(factor, (item[4]) { id, opbrck, arg_list, clbrck }, 4);		//  -11 /  10
 		add_rule(factor, (item[3]) { opbrck, expr, clbrck }, 3);				//  -12 /  11
@@ -1058,23 +1068,23 @@ void fill_rules_arr()
 		add_rule(logic, (item[3]) { logic, andand, compr }, 3);		//  -40 /  39
 		add_rule(logic, (item[3]) { logic, oror, compr }, 3);		//  -41 /  40
 		add_rule(expr, (item[1]) { logic }, 1);						//  -42 /  41																								//
-																						// rule_num / rule_index
-		add_rule(stmt, (item[2]) { expr, semcol }, 2);									//	-43 /  42
-		add_rule(incr, (item[1]) { plspls }, 1);										//  -44 /  43
-		add_rule(incr, (item[1]) { mnsmns }, 1);										//  -45 /  44
-		add_rule(incr, (item[1]) { mltmlt }, 1);										//  -46 /  45
-		add_rule(incr, (item[1]) { divdiv }, 1);										//  -47 /  46
-		add_rule(stmt, (item[4]) { id, eq, expr, semcol }, 4);							//  -48 /  47
-		add_rule(stmt, (item[7]) { colon, type, colon, id, eq, expr, semcol }, 7);		//  -49 /  48
-		add_rule(stmt, (item[4]) { id, incr, expr, semcol }, 4);						//  -50 /  49
-		add_rule(stmt, (item[3]) { id, incr, semcol }, 3);								//	-51 /  50
-		add_rule(stmt, (item[2]) { brk, semcol }, 2);									//  -52 /  51
-		add_rule(stmt, (item[2]) { pss, semcol }, 2);									//  -53 /  52
-		add_rule(stmt, (item[3]) { ret, expr, semcol }, 3);								//  -54 / 53
-		add_rule(stmt, (item[7]) { chck, opbrck, expr, comma, id, clbrck, block }, 7);	//  -55 /  54
-		add_rule(stmt, (item[5]) { ifky, opbrck, expr, clbrck, block }, 5);				//  -56 /  55
-		add_rule(stmt, (item[5]) { elsky, opbrck, expr, clbrck, block }, 5);			//  -57 /  56
-		add_rule(stmt, (item[2]) { elsky, block }, 2);									//  -58 / 57
+																							// rule_num / rule_index
+		add_rule(stmt, (item[2]) { expr, semcol }, 2);										//	-43 /  42
+		add_rule(incr, (item[1]) { plspls }, 1);											//  -44 /  43
+		add_rule(incr, (item[1]) { mnsmns }, 1);											//  -45 /  44
+		add_rule(incr, (item[1]) { mltmlt }, 1);											//  -46 /  45
+		add_rule(incr, (item[1]) { divdiv }, 1);											//  -47 /  46
+		add_rule(stmt, (item[4]) { id, eq, expr, semcol }, 4);								//  -48 /  47
+		add_rule(stmt, (item[7]) { colon, type, colon, id, eq, expr, semcol }, 7);			//  -49 /  48
+		add_rule(stmt, (item[4]) { id, incr, expr, semcol }, 4);							//  -50 /  49
+		add_rule(stmt, (item[3]) { id, incr, semcol }, 3);									//	-51 /  50
+		add_rule(stmt, (item[2]) { brk, semcol }, 2);										//  -52 /  51
+		add_rule(stmt, (item[2]) { pss, semcol }, 2);										//  -53 /  52
+		add_rule(stmt, (item[3]) { ret, expr, semcol }, 3);									//  -54 / 53
+		add_rule(stmt, (item[7]) { chck, opbrck, expr, comma, id, clbrck, block }, 7);		//  -55 /  54
+		add_rule(if_stmt, (item[5]) { ifky, opbrck, expr, clbrck, block }, 5);				//  -56 /  55
+		add_rule(if_stmt, (item[6]) { if_stmt, elsky, opbrck, expr, clbrck, block }, 6);	//  -57 /  56
+		add_rule(cond_stmt, (item[3]) { if_stmt, elsky, block }, 3);						//  -58 /  57
 
 																						//  -59 /  58						
 		add_rule(stmt, (item[12]) { loop, opbrck, decl, param, eq, expr, arrow, expr, semcol, stmt, clbrck, block }, 12);
@@ -1094,8 +1104,9 @@ void fill_rules_arr()
 		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);//  -72 /  71
 		add_rule(prgrm, (item[1]) { stmt_list }, 1);									//  -73	/  72
 		add_rule(expr, (item[4]) { scan, opbrck, type, clbrck }, 4);					//  -74	/  73
-		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);					//	-75	/  74			
-		
+		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);					//	-75	/  74	
+		add_rule(cond_stmt, (item[1]) { if_stmt }, 1);									//	-76 /  75
+		add_rule(stmt, (item[1]) { cond_stmt }, 1);										//	-77	/  76
 	}
 }
 void free_rules()

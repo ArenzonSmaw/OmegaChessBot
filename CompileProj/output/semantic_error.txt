@@ -1,0 +1,5 @@
+DECLARATION ERROR: undefined identifier 'x'., At: Line:4, Col:8.
+DECLARATION ERROR: undefined identifier 'y'., At: Line:4, Col:13.
+TYPE ERROR: arithmetic operands must be numeric types., At: Line:4, Col:11.
+TYPE ERROR: incompatible return type., At: Line:6, Col:6.
+TYPE ERROR: incompatible return type., At: Line:11, Col:6.

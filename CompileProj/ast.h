@@ -90,6 +90,7 @@ typedef struct ast_node
 {
 	node_kind kind;
 	type_kind type;
+	data_type dattype;
 	union {
 		char* name;
 		double value;
@@ -102,7 +103,7 @@ typedef struct ast_node
 
 
 
-AST init_ast(token* tkn, node_kind kind, int children);
+AST init_ast(token* tkn, node_kind kind, int children, int line, int col);
 /*
 	GETS:		pointer to token tkn, semantic kind, and number of children to allocate
 	RETURNS:	pointer to ast node, initialized with token value, kind and allocated children array

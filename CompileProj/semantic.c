@@ -30,14 +30,16 @@ void prod_error(semanticer* smt, char title[TITLE_MAX_LENGTH], char message[MESS
 		DOES: creates a new error and appends to smt->error. if ident not empty, concats it to error message
 	*/
 	int len = strlen(ident);
+	char err_message[MESSAGE_MAX_LENGTH] = "\0";
+	strcat(err_message, message);
 	if (len > 0) {
-		strcat(message, ident);
-		strcat(message, "'.");
+		strcat(err_message, ident);
+		strcat(err_message, "'.");
 	}
 	else {
-		strcat(message, ".");
+		strcat(err_message, ".");
 	}
-	err_append(smt->error, error(title, message, line, col));
+	err_append(smt->error, error(title, err_message, line, col));
 }
 
 type_kind wider_type(type_kind type1, type_kind type2)
@@ -108,6 +110,11 @@ scope init_scope(int level, scope parent)
 	if (parent) {
 		scp->parent = parent;
 		scp->offset_next = parent->offset_next;
+	}
+	else
+	{
+		scp->parent = NULL;
+		scp->offset_next = 0;
 	}
 
 	for (i = 0; i < TABLE_ROWS; i++)
@@ -277,8 +284,8 @@ void var_declare_handler(semanticer* smt, AST ast)
 	AST decl = ast->children[0];
 
 	if (decl->kind == NODE_PARAMETER) {
-		name = decl->children[0]->data.name;
-		declared_type = decl->children[1]->type;
+		declared_type = decl->children[0]->type;
+		name = decl->children[1]->data.name;
 	}
 	else {
 		name = decl->data.name;
@@ -697,14 +704,15 @@ void init_dispatch_table()
 semanticer* init_semanticer(AST ast, char* error_file)
 {
 	semanticer* smt = (semanticer*)malloc(sizeof(semanticer));
-
+	FILE* err = fopen(error_file, "w");
 	if (smt)
 	{
-		smt->ast = 
-		smt->error = err_list(error_file);
+		smt->ast = ast;
+		smt->error = err_list(err);
 		smt->current_scope = init_scope(0, NULL);
 		smt->in_function = 0;
 		smt->loop_depth = 0;
+		smt->current_return_type = TYPE_VOID;
 	}
 	else
 		memory_error();

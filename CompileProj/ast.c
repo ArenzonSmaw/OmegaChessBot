@@ -1,6 +1,20 @@
 #include "ast.h"
 #include <stdlib.h>
 
+type_kind TKN_TO_TYPE[SYMBOLS_COUNT];
+
+type_kind init_tkn_to_type()
+{
+	int i = 0;
+	for (i = 0; i < SYMBOLS_COUNT; i++)
+		TKN_TO_TYPE[i] = TYPE_VOID;
+	TKN_TO_TYPE[INT_LITERAL] = TYPE_INT;
+	TKN_TO_TYPE[FLOAT_LITERAL] = TYPE_FLOAT;
+	TKN_TO_TYPE[RAT_LITERAL] = TYPE_RATIONAL;
+	TKN_TO_TYPE[CHR_LITERAL] = TYPE_CHAR;
+	TKN_TO_TYPE[STR_LITERAL] = TYPE_STRING;
+	TKN_TO_TYPE[BOOL_LITERAL] = TYPE_BOOL;
+}
 
 void fill_kind_to_data()
 {
@@ -15,11 +29,13 @@ void fill_kind_to_data()
 	KIND_TO_DATA[NODE_IDENT] = NAME;
 }
 
-AST init_ast(token* tkn, node_kind kind, int children)
+AST init_ast(token* tkn, node_kind kind, int children, int line, int col)
 {
 	AST syntax_tree = create_leaf(tkn, kind);
 	alloc_children(syntax_tree, children);
 	syntax_tree->children_count = 0;
+	syntax_tree->line = line;
+	syntax_tree->col = col;
 	
 	return syntax_tree;
 }
@@ -40,6 +56,8 @@ AST create_leaf(token* tkn, node_kind kind)
 	{
 		ast->line = tkn->line;
 		ast->col = tkn->col;
+
+		ast->type = TKN_TO_TYPE[tkn->type];
 		ast->type = dattype;
 
 		if (dattype == NUM)
@@ -88,7 +106,10 @@ int insert_son(AST ast, AST son, int index)
 	if (index >= ast->children_size || index < 0)
 		succeeded = 0;
 	if (succeeded)
+	{
 		ast->children[index] = son;
+		ast->children_count++;
+	}
 	
 	return succeeded;
 }
@@ -108,8 +129,6 @@ int add_son(AST ast, AST son)
 		ast->children_size *= 2;
 		ast->children[ast->children_count++] = son;
 	}
-	else
-		ast->children_count++;
 	
 	return 1;
 }

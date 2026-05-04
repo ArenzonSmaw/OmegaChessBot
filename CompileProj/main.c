@@ -64,7 +64,7 @@ int call_semanticize(semanticer** smt, parser* prsr, char* err)
         successful = 0;
     }
 
-    free_err_list((*smt)->error);
+    free_err_list(&(*smt)->error);
     return successful;
 }
 
@@ -82,6 +82,162 @@ int call_generate(context* ctx, semanticer* smt, char* out)
     code_generate(ctx, smt->ast);
 }
 
+void preorder(AST ast)
+{
+    if (ast)
+    {
+        printf("%d ", ast->kind);
+        for (int i = 0; i < ast->children_count; i++)
+            preorder(ast->children[i]);
+    }
+}
+void postorder(AST ast)
+{
+    if (ast)
+    {
+        for (int i = 0; i < ast->children_count; i++)
+            postorder(ast->children[i]);
+        switch (ast->kind)
+        {
+        case NODE_START:
+            printf("START ");
+            break;
+        case NODE_PROGRAM:
+            printf("PRGRM ");
+            break;
+        case NODE_USE_DECLARE:
+            printf("use-declare ");
+            break;
+        case NODE_FUNC_DECLARE:
+            printf("func-declare ");
+            break;
+        case NODE_VAR_DECLARE:
+            printf("declare ");
+            break;
+        case NODE_ASSIGNMENT:
+            printf("= ");
+            break;
+
+        case NODE_IF:
+            printf("if ");
+            break;
+        case NODE_LOOP:
+            printf("loop ");
+            break;
+        case NODE_RETURN:
+            printf("return ");
+            break;
+        case NODE_BREAK:
+            printf("break ");
+            break;
+        case NODE_PASS:
+            printf("pass ");
+            break;
+
+        case NODE_IDENT:
+            printf("id ");
+            break;
+        case NODE_LITERAL:
+            printf("lit ");
+            break;
+        case NODE_CHAR:
+            printf("ch ");
+            break;
+        case NODE_STRING:
+            printf("str ");
+            break;
+        case NODE_UNDERLINE:
+            printf("_ ");
+            break;
+        case NODE_SCAN:
+            printf("scan ");
+            break;
+        case NODE_PRINT:
+            printf("print ");
+            break;
+
+        case NODE_ADD:
+            printf("+ ");
+            break;
+        case NODE_SUB:
+            printf("- ");
+            break;
+        case NODE_MUL:
+            printf("* ");
+            break;
+        case NODE_DIV:
+            printf("/ ");
+            break;
+        case NODE_MOD:
+            printf("% ");
+            break;
+        case NODE_QUO:
+            printf("// ");
+            break;
+        case NODE_LOG_OR:
+            printf("|| ");
+            break;
+        case NODE_BIT_OR:
+            printf("| ");
+            break;
+        case NODE_LOG_AND:
+            printf("&& ");
+            break;
+        case NODE_BIT_AND:
+            printf("& ");
+            break;
+        case NODE_LOG_NOT:
+            printf("! ");
+            break;
+        case NODE_BIT_NOT:
+            printf("!! ");
+            break;
+        case NODE_BIT_RIGHT:
+            printf(">> ");
+            break;
+        case NODE_BIT_LEFT:
+            printf("<< ");
+            break;
+        case NODE_LOG_EQUAL:
+            printf("== ");
+            break;
+        case NODE_LOG_DIFFERENT:
+            printf("!= ");
+            break;
+        case NODE_GREAT:
+            printf("> ");
+            break;
+        case NODE_GREAT_EQUAL:
+            printf(">= ");
+            break;
+        case NODE_LESS:
+            printf("< ");
+            break;
+        case NODE_LESS_EQUAL:
+            printf("<= ");
+            break;
+        case NODE_XOR:
+            printf("~| ");
+            break;
+
+        case NODE_FUNC_CALL:
+            printf("call ");
+            break;
+        case NODE_BLOCK:
+            printf("block ");
+            break;
+        case NODE_STMT_LIST:
+            printf("stmt-list ");
+            break;
+        case NODE_TYPE_CAST:
+            printf("cast ");
+            break;
+        case NODE_PARAMETER:
+            printf("param ");
+            break;
+        }
+    }
+}
 
 int main(/*int argc, char* argv[]*/) {
 
@@ -103,7 +259,7 @@ int main(/*int argc, char* argv[]*/) {
     {
         successful = call_parse(&prsr, lxr, "output/parser_error.txt", "parser/slr.txt");
     }
-
+    postorder(prsr->ast);
     if (successful)
     {
         successful = call_semanticize(&smt, prsr, "output/semantic_error.txt");
