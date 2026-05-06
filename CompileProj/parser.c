@@ -3,6 +3,7 @@
 #include "slrgenerator.h"
 #include <stdlib.h>
 #include <string.h>
+#include "ast.h"
 
 #pragma warning (disable:4996)
 
@@ -11,13 +12,49 @@
 
 #define START_STATE 0
 
-#define RULES_NUM 77
+#define RULES_NUM 79
 
 items_arr rules;
 int rule_index;
 action** SLR_ACTION;
 int** SLR_GOTO;
 int states_count;
+
+typedef struct {
+	char* lexeme;
+	type_kind type;
+} type_entry;
+
+type_entry LEX_TO_TYPE[TYPE_ERROR] = {
+	{"int", TYPE_INT},
+	{"float", TYPE_FLOAT},
+	{"natural", TYPE_NATURAL},
+	{"rational", TYPE_RATIONAL},
+	{"bool", TYPE_BOOL},
+	{"char", TYPE_CHAR},
+	{"string", TYPE_STRING},
+	{"void", TYPE_VOID},
+	{"pointer", TYPE_POINTER},
+	{"exception", TYPE_EXCEPTION}
+};
+
+type_kind lex_to_type(char* lexeme)
+{
+	int i;
+	for (i = 0; i < TYPE_ERROR; i++)
+		if (!strcmp(lexeme, LEX_TO_TYPE[i].lexeme))
+			return LEX_TO_TYPE[i].type;
+	return TYPE_ERROR;
+}
+node_kind list_kind(symbol sym)
+{
+	node_kind ret = -1;
+	if (sym == PARAM_LIST)
+		ret = NODE_PARAM_LIST;
+	else if (sym == ARG_LIST)
+		ret = NODE_ARG_LIST;
+	return ret;
+}
 
 node_kind TERMINAL_TO_KIND[TERMINALS_COUNT];
 void (*REDUCTION[RULES_NUM])(parser*, symbol);
@@ -166,6 +203,17 @@ void shift(parser* prsr)
 	prsr->index++;
 }
 
+void reduce_start(parser* prsr, symbol lhs)
+{
+	info* stmts = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+	AST node = init_ast(NULL, NODE_START, 1, 0, 0);
+	insert_son(node, stmts->node, 0);
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(stmts);
+}
 void reduce_parenthesized_expr(parser* prsr, symbol lhs)
 {
 	//FACTOR -> '(' + EXPRESSION + ')'
@@ -208,6 +256,28 @@ void reduce_function_call(parser* prsr, symbol lhs)
 	free(id);
 	free(exprs);
 }
+void reduce_function_call_empty(parser* prsr, symbol lhs)
+{
+	//FACTOR -> id + '(' + ')'
+	info* cl_bracket, * op_bracket, * id;
+	int prev_state;
+	AST node;
+	cl_bracket = pop(&(prsr->stck));
+	op_bracket = pop(&(prsr->stck));
+	id = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	node = init_ast(NULL, NODE_FUNC_CALL, 2, id->node->line, id->node->col);
+	insert_son(node, id->node, 0);
+
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free_all(cl_bracket);
+	free_all(op_bracket);
+	free(id);
+}
+
 void reduce_cast(parser* prsr, symbol lhs)
 {
 	//FACTOR -> ':' + type + ':' + id
@@ -300,6 +370,22 @@ void reduce_binary(parser* prsr, symbol lhs)
 	free(opnd2);
 	free(oprt);
 }
+void reduce_new_list(parser* prsr, symbol lhs)
+{
+	//PARAM_LIST -> PARAM
+	info* item;
+	int prev_state;
+	item = pop(&(prsr->stck));
+	prev_state = top(&(prsr->stck))->state;
+
+	AST node = init_ast(NULL, list_kind(lhs), 1, item->node->line, item->node->col);
+	insert_son(node, item->node, 0);
+
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free(item);
+}
 void reduce_list(parser* prsr, symbol lhs)
 {
 	//PARAM_LIST -> PARAM_LIST + ',' + PARAM
@@ -330,6 +416,7 @@ void reduce_param(parser* prsr, symbol lhs)
 	colon = pop(&(prsr->stck));
 	id = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
+	type->node->type = lex_to_type(type->tkn->lexeme);
 	node = init_ast(NULL, NODE_PARAMETER, 2, id->node->line, id->node->col);
 	insert_son(node, type->node, 0);
 	insert_son(node, id->node, 1);
@@ -367,8 +454,7 @@ void reduce_use(parser* prsr, symbol lhs)
 void reduce_func_declare(parser* prsr, symbol lhs)
 {
 	//func_declare -> declare + PARAM + '(' + PARAM_LIST + ')'
-	info* semcol = pop(&(prsr->stck)),
-		* block = pop(&(prsr->stck)),
+	info* block = pop(&(prsr->stck)),
 		* cl_bracket = pop(&(prsr->stck)),
 		* param_list = pop(&(prsr->stck)),
 		* op_bracket = pop(&(prsr->stck)),
@@ -384,12 +470,34 @@ void reduce_func_declare(parser* prsr, symbol lhs)
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
 	
-	free_all(semcol);
 	free_all(cl_bracket);
 	free_all(op_bracket);
 	free_all(declare);
 	free(block);
 	free(param_list);
+	free(param);
+}
+void reduce_func_empty(parser* prsr, symbol lhs)
+{
+	//func_declare -> declare + PARAM + '(' + ')'
+	info* block = pop(&(prsr->stck)),
+		* cl_bracket = pop(&(prsr->stck)),
+		* op_bracket = pop(&(prsr->stck)),
+		* param = pop(&(prsr->stck)),
+		* declare = pop(&(prsr->stck));
+	int prev_state = top(&(prsr->stck))->state;
+
+	AST node = init_ast(NULL, NODE_FUNC_DECLARE, 3, declare->node->line, declare->node->col);
+	insert_son(node, param->node, 0);
+	insert_son(node, block->node, 2);
+
+	prsr->state = SLR_GOTO[lhs][prev_state];
+	push(&(prsr->stck), NULL, node, prsr->state);
+
+	free_all(cl_bracket);
+	free_all(op_bracket);
+	free_all(declare);
+	free(block);
 	free(param);
 }
 void reduce_var_declare_full(parser* prsr, symbol lhs)
@@ -492,25 +600,29 @@ void reduce_loop_while(parser* prsr, symbol lhs)
 }
 void reduce_loop_for(parser* prsr, symbol lhs)
 {
-	//loop -> loop + '(' + declare + PARAM + '->' + EXPRESSION + ';' + STATEMENT + ')' + BLOCK
+	//loop -> loop + '(' + declare + PARAM + '=' + EXPRESSION + '->' + EXPRESSION + ';' + STATEMENT + ')' + BLOCK
 	info* block = pop(&(prsr->stck)),
 		* clbrck = pop(&(prsr->stck)),
 		* stmt = pop(&(prsr->stck)),
 		* semcol = pop(&(prsr->stck)),
 		* expr = pop(&(prsr->stck)),
 		* arrow = pop(&(prsr->stck)),
+		* init = pop(&(prsr->stck)),
+		* eq = pop(&(prsr->stck)),
 		* param = pop(&(prsr->stck)),
-		* declare = pop(&(prsr->stck)), //
+		* declare = pop(&(prsr->stck)),
 		* opbrck = pop(&(prsr->stck)),
 		* loop = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	AST iterator = init_ast(NULL, NODE_VAR_DECLARE, 2, param->node->line, param->node->col);
-	insert_son(iterator, param, 0);
-	insert_son(iterator, expr, 1);
-	loop->node = init_ast(loop->tkn, NODE_LOOP, 3, loop->node->line, loop->node->col);
-	insert_son(loop->node, iterator, 0);
-	insert_son(loop->node, stmt, 1);
-	insert_son(loop->node, block, 2);
+	alloc_children(loop->node, 4);
+	loop->node->kind = NODE_LOOP;
+	AST declaration = init_ast(NULL, NODE_VAR_DECLARE, 2, param->node->line, param->node->col);
+	insert_son(declaration, param->node, 0);
+	insert_son(declaration, init->node, 1);
+	insert_son(loop->node, declaration, 0);
+	insert_son(loop->node, expr->node, 1);
+	insert_son(loop->node, stmt->node, 2);
+	insert_son(loop->node, block->node, 3);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), loop->tkn, loop->node, prsr->state);
@@ -520,6 +632,8 @@ void reduce_loop_for(parser* prsr, symbol lhs)
 	free_all(arrow);
 	free_all(semcol);
 	free_all(clbrck);
+	free_all(eq);
+	free(init);
 	free(loop);
 	free(param);
 	free(expr);
@@ -635,7 +749,8 @@ void reduce_scan(parser* prsr, symbol lhs)
 void reduce_print(parser* prsr, symbol lhs)
 {
 	// PRINT_EXPR -> print + '(' + expr + ')'
-	info* clbrck = pop(&(prsr->stck)),
+	info* semcol = pop(&(prsr->stck)),
+		* clbrck = pop(&(prsr->stck)),
 		* expr = pop(&(prsr->stck)),
 		* opbrck = pop(&(prsr->stck)),
 		* print = pop(&(prsr->stck));
@@ -646,6 +761,7 @@ void reduce_print(parser* prsr, symbol lhs)
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), print->tkn, print->node, prsr->state);
 
+	free_all(semcol);
 	free_all(clbrck);
 	free_all(opbrck);
 	free(expr);
@@ -692,7 +808,6 @@ void reduce_assign_inc_bin(parser* prsr, symbol lhs)
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), NULL, node, prsr->state);
 
-	free_all(expr);
 	free_all(semcol);
 	free(id);
 	free(expr);
@@ -701,7 +816,7 @@ void reduce_assign_inc_unary(parser* prsr, symbol lhs)
 {
 	// assign inc unary -> id + '**' + ';' 
 	info* semcol = pop(&(prsr->stck)),
-		* oprt = pop((prsr->stck)),
+		* oprt = pop(&(prsr->stck)),
 		* id = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 	node_kind kind = TERMINAL_TO_KIND[oprt->tkn->type];
@@ -713,7 +828,7 @@ void reduce_assign_inc_unary(parser* prsr, symbol lhs)
 	else
 		*one = (token){ "2", 2, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
 	insert_son(incr, id->node, 0);
-	insert_son(incr, create_leaf(one, LITERAL), 1);
+	insert_son(incr, create_leaf(one, NODE_LITERAL), 1);
 	insert_son(node, id->node, 0);
 	insert_son(node, incr, 1);
 
@@ -818,13 +933,15 @@ void fill_reduction_tbl()
 {
 	//fills reduction table with the respective reduction functions
 	int i;
+	//program start reduction
+	REDUCTION[0] = reduce_start;
 	//single term reduction
-	for (i = 0; i <= 9; i++)
+	for (i = 1; i <= 9; i++)
 		REDUCTION[i] = reduce_basic_rec_case;
-	REDUCTION[17] = REDUCTION[18] = REDUCTION[28] = REDUCTION[31] = REDUCTION[38] = REDUCTION[41] = reduce_basic_rec_case;
+	REDUCTION[18] = REDUCTION[28] = REDUCTION[31] = REDUCTION[38] = REDUCTION[41] = reduce_basic_rec_case;
 	for (i = 43; i <= 46; i++)
 		REDUCTION[i] = reduce_basic_rec_case;
-	REDUCTION[65] = REDUCTION[72] = reduce_basic_rec_case;
+	REDUCTION[72] = reduce_basic_rec_case;
 
 	// operand operator operand 
 	for (i = 19; i <= 27; i++)
@@ -846,13 +963,16 @@ void fill_reduction_tbl()
 	REDUCTION[63] = reduce_param;
 
 	//something_list
+	REDUCTION[17] = REDUCTION[65] = reduce_new_list;
 	REDUCTION[16] = REDUCTION[64] = reduce_list;
+
 	//stmt_list
 	REDUCTION[60] = reduce_stmt_list;
 	REDUCTION[61] = reduce_new_stmt_list;
 
 	//function call
 	REDUCTION[10] = reduce_function_call;
+	REDUCTION[77] = reduce_function_call_empty;
 
 	//declaration
 	REDUCTION[66] = reduce_use;
@@ -861,6 +981,7 @@ void fill_reduction_tbl()
 	REDUCTION[69] = reduce_var_declare_half;
 	REDUCTION[70] = reduce_var_declare_empty;
 	REDUCTION[71] = reduce_func_declare;
+	REDUCTION[78] = reduce_func_empty;
 
 	// conditionals
 	REDUCTION[55] = reduce_if;
@@ -1104,9 +1225,11 @@ void fill_rules_arr()
 		add_rule(stmt, (item[6]) { decl, param, opbrck, param_list, clbrck, block }, 6);//  -72 /  71
 		add_rule(prgrm, (item[1]) { stmt_list }, 1);									//  -73	/  72
 		add_rule(expr, (item[4]) { scan, opbrck, type, clbrck }, 4);					//  -74	/  73
-		add_rule(expr, (item[4]) { print, opbrck, expr, clbrck }, 4);					//	-75	/  74	
+		add_rule(stmt, (item[5]) { print, opbrck, expr, clbrck, semcol }, 5);			//	-75	/  74	
 		add_rule(cond_stmt, (item[1]) { if_stmt }, 1);									//	-76 /  75
 		add_rule(stmt, (item[1]) { cond_stmt }, 1);										//	-77	/  76
+		add_rule(factor, (item[3]) {id, opbrck, clbrck}, 3);							//	-78	/  77
+		add_rule(stmt, (item[5]) { decl, param, opbrck, clbrck, block }, 5);			//	-79	/  78
 	}
 }
 void free_rules()
@@ -1260,6 +1383,7 @@ void parse(parser* prsr, char* parser_name)
 	fill_reduction_tbl();
 	fill_terminal_to_kind();
 	fill_kind_to_data();
+	fill_tkn_to_type();
 
 	prsr->stck = init_stack();
 	prsr->index = 0;

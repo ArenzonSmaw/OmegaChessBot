@@ -166,12 +166,12 @@ void unknown_character(lexer* lxr)
 void expected_error(lexer* lxr)
 {
 	// missing char / string literal delimiter: ' or " 
-	char exp;
+	char exp[MESSAGE_MAX_LENGTH] = "expected a: ";
 	if (lxr->data[lxr->count].type == STR_LITERAL)
-		exp = '\"';
+		strcat(exp, "\"");
 	else
-		exp = '\'';
-	err_append(lxr->err_list, error("EXPECTED CHARACTER", "expected a: " + exp, lxr->line, lxr->col));
+		strcat(exp, "\'");
+	err_append(lxr->err_list, error("EXPECTED CHARACTER", exp, lxr->line, lxr->col));
 }
 
 void start_token(lexer* lxr)
@@ -731,14 +731,26 @@ void init_default_states()
 		SET(ST_STRINGSTART, ch, ST_STRINGSTART, add_char);
 	}
 	SET(ST_CHARSTART, CH_DIGIT, ST_CHARVALUE, add_char);
+	SET(ST_CHARSTART, CH_WHITESPACE, ST_CHARVALUE, add_char);
 	SET(ST_STRINGSTART, CH_DIGIT, ST_STRINGSTART, add_char);
+	SET(ST_STRINGSTART, CH_WHITESPACE, ST_STRINGSTART, add_char);
 	SET(ST_STRINGSTART, CH_DQUOTE, ST_START, end_string);
 	SET(ST_CHARVALUE, CH_SQUOTE, ST_START, end_char);
 
 	for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
 		SET(ST_ERROR, ch, ST_ERROR, ignore);
-	for (ch = CH_WHITESPACE; ch <= CH_DQUOTE; ch++)
-		SET(ST_ERROR, ch, ST_START, end_token);
+
+	SET(ST_ERROR, CH_WHITESPACE, ST_START, ignore);
+	SET(ST_ERROR, CH_NEWLINE, ST_START, ignore);
+	SET(ST_ERROR, CH_COMMA, ST_START, ignore);
+	SET(ST_ERROR, CH_SEMICOLON, ST_START, ignore);
+
+	for( ch = CH_OP_SQRBRACKET; ch <= CH_CL_RNDBRACKET; ch++)
+	{
+		SET(ST_ERROR, ch, ST_START, start_controlflow);
+	}
+	SET(ST_ERROR, CH_SQUOTE, ST_START, start_controlflow);
+	SET(ST_ERROR, CH_DQUOTE, ST_START, start_controlflow);
 }
 
 void init_operator_states()
@@ -764,7 +776,7 @@ void init_operator_states()
 		GOTO[st][CH_COLON] = ST_START;// is not a part of a multi character operator
 		GOTO[st][CH_HASHTAG] = ST_COMMENT1;
 	}
-	for (st = ST_DOT; st <= ST_EQUALS; st++)
+	for (st = ST_DOT; st <= ST_MINUS; st++)
 	{
 		for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
 		{

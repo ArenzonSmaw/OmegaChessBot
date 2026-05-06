@@ -5,13 +5,17 @@
 typedef type_kind (*handle)(semanticer*, AST);
 
 handle HANDLE_DISPATCH[KIND_COUNT];
+int IS_PRINTABLE[TYPE_ERROR + 1] = {
+	/*INT*/1, /*FLOAT*/1, /*NATURAL*/1, /*RATIONAL*/1, /*BOOL*/1,
+	/*CHAR*/1, /*STRING*/1, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/1, /*ERROR*/0
+};
 int IS_INTEGER[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/0, /*NATURAL*/1, /*RATIONAL*/0, /*BOOL*/0,
 	/*CHAR*/0, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
 };
 int IS_NUMERIC[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/1, /*NATURAL*/1, /*RATIONAL*/1, /*BOOL*/1,
-	/*CHAR*/0, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
+	/*CHAR*/1, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
 };
 int IS_SCALAR[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/1, /*NATURAL*/1, /*RATIONAL*/1, /*BOOL*/1,
@@ -34,11 +38,9 @@ void prod_error(semanticer* smt, char title[TITLE_MAX_LENGTH], char message[MESS
 	strcat(err_message, message);
 	if (len > 0) {
 		strcat(err_message, ident);
-		strcat(err_message, "'.");
+		strcat(err_message, "'");
 	}
-	else {
-		strcat(err_message, ".");
-	}
+	
 	err_append(smt->error, error(title, err_message, line, col));
 }
 
@@ -82,8 +84,12 @@ int is_comparable(type_kind type1, type_kind type2)
 	if (IS_NUMERIC[type1] && IS_NUMERIC[type2]) return 1;
 	return 0;
 }
+int is_printable(type_kind type)
+{
+	return IS_PRINTABLE[type];
+}
 
-symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, int scope_level, int line, int col, int offset)
+symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, AST initializer, int scope_level, int line, int col, int offset)
 {
 	symbol_link* sym = (symbol_link*)malloc(sizeof(symbol_link));
 	sym->name = strdup(name);
@@ -92,11 +98,29 @@ symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, int s
 	sym->type = type;
 
 	sym->scope_level = scope_level;
+	sym->is_global = scope_level == 0;
 
 	sym->decl_line = line;
 	sym->decl_col = col;
 	sym->offset = offset;
 
+	if (initializer)
+	{
+		sym->is_initialized = 1;
+		sym->initializer = initializer;
+		if (initializer->kind == NODE_LITERAL)
+		{
+			sym->init_const_val = initializer->data.value;
+			sym->is_init_const = 1;
+		}
+		else
+			sym->is_init_const = 0;
+	}
+	else
+	{
+		sym->is_initialized = 0;
+		sym->initializer = NULL;
+	}
 	sym->next = NULL;
 
 	return sym;
@@ -184,7 +208,7 @@ symbol_link* extract_symbol(scope scp, char* name)
 	return sym;
 }
 
-int enter_scope(semanticer* smt)
+void enter_scope(semanticer* smt)
 {
 	scope scp = smt->current_scope;
 	smt->current_scope = init_scope(scp->level+1, scp);
@@ -225,51 +249,58 @@ void start_handler(semanticer* smt, AST ast)
 	analyze(smt, ast->children[0]);
 }
 
-void program_handler(semanticer* smt, AST ast)
-{
-	//handles program node
-	int i;
-
-	for (i = 0; i < ast->children_count; i++)
-		analyze(smt, ast->children[i]);
-}
 void func_declare_handler(semanticer* smt, AST ast)
 {
 	//handles function declaration
 	int i;
+	int prev_infunc;
+	type_kind prev_rettype;
+
 	AST name_param = ast->children[0];   
 	AST param_list = ast->children[1];  
 	AST block = ast->children[2];   
 	AST param;
 
-	char* fname = name_param->children[0]->data.name;
-	type_kind return_type = name_param->children[1]->type;
+	char* fname = name_param->children[1]->data.name;
+	type_kind return_type = name_param->children[0]->type;
 
 	if (symbol_exist(smt->current_scope, fname)) {
 		prod_error(smt, "DECLARATION ERROR", "redeclaration of function '", fname, ast->line, ast->col);
 	}
 
-	symbol_link* fsym = create_symbol(fname, FUNCTION, return_type,
+	symbol_link* fsym = create_symbol(fname, FUNCTION, return_type, NULL,
 		smt->current_scope->level,
 		ast->line, ast->col, 0);
-	fsym->param_count = param_list->children_count;
-	fsym->params = (param_info*)malloc(fsym->param_count * sizeof(param_info));
-	for (i = 0; i < param_list->children_count; i++)
-	{
-		fsym->params[i].type = param_list->children[i]->type;
-		fsym->params[i].name = param_list->children[i]->data.name;
-	}
 
+	if (!param_list)
+		fsym->param_count = 0;
+	else
+	{
+		fsym->param_count = param_list->children_count;
+		fsym->params = (param_info*)malloc(fsym->param_count * sizeof(param_info));
+		for (i = 0; i < param_list->children_count; i++)
+		{
+			param = param_list->children[i];
+			fsym->params[i].type = param->children[0]->type;
+			fsym->params[i].name = param->children[1]->data.name;
+		}
+	}
 	enter_symbol(smt->current_scope, fsym);
 	enter_scope(smt);
-
-	for (int i = 0; i < param_list->children_count; i++) {
-		param = param_list->children[i];  
-		analyze(smt, param);                  
+	prev_infunc = smt->in_function;
+	smt->in_function = 1;
+	prev_rettype = smt->current_return_type;
+	smt->current_return_type = return_type;
+	for (i = 0; i < fsym->param_count; i++)
+	{
+		param = param_list->children[i];
+		analyze(smt, param);
 	}
 
 	analyze(smt, block);
 
+	smt->current_return_type = prev_rettype;
+	smt->in_function = prev_infunc;
 	exit_scope(smt);
 
 	ast->type = return_type;
@@ -282,6 +313,7 @@ void var_declare_handler(semanticer* smt, AST ast)
 	type_kind declared_type;
 	type_kind init_type;
 	AST decl = ast->children[0];
+	AST initializer = NULL;
 
 	if (decl->kind == NODE_PARAMETER) {
 		declared_type = decl->children[0]->type;
@@ -299,15 +331,16 @@ void var_declare_handler(semanticer* smt, AST ast)
 	init_type = TYPE_VOID;
 	if (ast->children_count > 1 && ast->children[1] != NULL) {
 		analyze(smt, ast->children[1]);
+		initializer = ast->children[1];
 		init_type = ast->children[1]->type;
 
 		if (!type_can_contain(declared_type, init_type)) {
 			prod_error(smt, "TYPE ERROR", "incompatible declare and initiation types for '", name, ast->line, ast->col);
 		}
 	}
-	symbol_link* sym = create_symbol(name, VARIABLE, declared_type, smt->current_scope->level,
+	symbol_link* sym = create_symbol(name, VARIABLE, declared_type, initializer, smt->current_scope->level,
 		ast->line, ast->col, smt->current_scope->offset_next++);
-	enter_symbol(smt, sym);
+	enter_symbol(smt->current_scope, sym);
 
 	ast->type = declared_type;
 }
@@ -320,15 +353,14 @@ void assignment_handler(semanticer* smt, AST ast)
 	AST rhs = ast->children[1];
 	type_kind rhs_type;
 
-	symbol_link* sym = get_symbol(smt, ident->data.name);
+	symbol_link* sym = get_symbol(smt->current_scope, ident->data.name);
 	if (!sym) {
 		prod_error(smt, "ASSIGNMENT ERROR", "assignment to undeclared variable '", ident->data.name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
-	/*else if (sym->kind == CONSTANT) {
-		assignment_error(smt, ident->line, ident->col,
-			"assignment to constant '%s'", ident->data.name);
-	}*/
+	else if (sym->kind == CONSTANT) {
+		prod_error(smt, "ASSIGNMENT ERROR", "assignement to constant '", sym->name, sym->decl_line, sym->decl_col);
+	}
 
 	analyze(smt, rhs);
 	rhs_type = rhs->type;
@@ -344,18 +376,18 @@ void parameter_handler(semanticer* smt, AST ast)
 {
 	//handles parameter nodes
 
-	AST ident = ast->children[0];
-	AST type_node = ast->children[1];
+	AST ident = ast->children[1];
+	AST type_node = ast->children[0];
 
 	char* name = ident->data.name;
 	type_kind ptype = type_node->type;
 
-	if (symbol_exist(smt, name)) {
+	if (symbol_exist(smt->current_scope, name)) {
 		prod_error(smt, "SIGNATURE ERROR", "duplicate parameter name '", name, ast->line, ast->col);
 		ast->type = TYPE_ERROR;
 	}
 	else {
-		symbol_link* sym = create_symbol(name, PARAM, ptype,
+		symbol_link* sym = create_symbol(name, PARAM, ptype, NULL,
 			smt->current_scope->level,
 			ast->line, ast->col,
 			smt->current_scope->offset_next++);
@@ -398,7 +430,9 @@ void if_handler(semanticer* smt, AST ast)
 	//handles if node
 
 	AST cond = ast->children[0];
-	AST block = ast->children[1];
+	AST then = ast->children[1];
+	AST othrwise = ast->children[2];
+
 	type_kind cond_type;
 
 	analyze(smt, cond);
@@ -409,13 +443,13 @@ void if_handler(semanticer* smt, AST ast)
 
 	//block
 	enter_scope(smt);
-	analyze(smt, block);
+	analyze(smt, then);
 	exit_scope(smt);
 
 	//else
-	if (ast->children_count > 2 && ast->children[2] != NULL) {
+	if (othrwise != NULL) {
 		enter_scope(smt);
-		analyze(smt, ast->children[2]); 
+		analyze(smt, othrwise); 
 		exit_scope(smt);
 	}
 	ast->type = TYPE_VOID;
@@ -610,11 +644,33 @@ void comparison_handler(semanticer* smt, AST ast)
 
 	ast->type = TYPE_BOOL;  
 }
+void check_args(semanticer* smt, AST arg_list, symbol_link* func)
+{
+	int i, arg_count;
+	AST arg;
+	arg_count = arg_list ? arg_list->children_count: 0;
+	if (arg_count != func->param_count) {
+		prod_error(smt, "SIGNATURE ERROR", "argument number does not match", "\0", arg_list->line, arg_list->col);
+		arg_list->type = TYPE_ERROR;
+	}
+	for (i = 0; i < arg_count; i++) {
+		arg = arg_list->children[i];
+		analyze(smt, arg);
+		if (arg->kind == NODE_IDENT)
+		{
+			arg = arg->children[1];
+		}
+
+		if (arg->type != func->params[i].type)
+			prod_error(smt, "TYPE ERROR", "argument type does not match for ",
+				arg->children[0]->data.name, arg->line, arg->col);
+	}
+}
 void func_call_handler(semanticer* smt, AST ast)
 {
-	//handles function call node
+	//handles function call nod
 	AST ident = ast->children[0];
-	type_kind temp;
+	AST arg_list = ast->children[1];
 	symbol_link* sym = get_symbol(smt->current_scope, ident->data.name);
 	if (!sym) {
 		prod_error(smt, "DECLARATION ERROR", "call to undeclared function '", ident->data.name, ast->line, ast->col);
@@ -625,18 +681,9 @@ void func_call_handler(semanticer* smt, AST ast)
 		ast->type = TYPE_ERROR;
 	}
 	else {
-		int arg_count = ast->children_count - 1;
-		if (arg_count != sym->param_count) {
-			prod_error(smt, "SIGNATURE ERROR", "argument number does not match", "\0", ast->line, ast->col);
-			ast->type = TYPE_ERROR;
-		}
-		temp = smt->current_return_type;
-		smt->current_return_type = ast->kind;
-		for (int i = 1; i < ast->children_count; i++) {
-			analyze(smt, ast->children[i]);
-		}
-		ast->type = sym->type;  // return type of the function
+		check_args(smt, arg_list, sym);
 	}
+	ast->type = sym->type;
 }
 void block_handler(semanticer* smt, AST ast)
 {
@@ -648,11 +695,33 @@ void block_handler(semanticer* smt, AST ast)
 	ast->type = TYPE_VOID;
 }
 
+void scan_handler(semanticer* smt, AST ast) 
+{
+	AST type = ast->children[0];
+	analyze(smt, type);
+	if (!is_printable(type->type))
+	{
+		prod_error(smt, "TYPE ERROR", "scan type must be a scannable type- a printable type", "\0", ast->line, ast->col);
+	}
+	ast->type = type->type;
+}
+void print_handler(semanticer* smt, AST ast) 
+{
+	AST expr = ast->children[0];
+	analyze(smt, expr);
+	if (!is_printable(expr->type))
+	{
+		prod_error(smt, "TYPE ERROR", "expr inside 'print' must be of a printable type", "\0", ast->line, ast->col);
+		ast->type = TYPE_ERROR;
+	}
+	else
+		ast->type = expr->type;
+}
+
 void init_dispatch_table()
 {
 	//fills the HANDLER DISPATCH lookup table
 	HANDLE_DISPATCH[NODE_START] = start_handler;
-	HANDLE_DISPATCH[NODE_PROGRAM] = program_handler;
 
 	HANDLE_DISPATCH[NODE_FUNC_DECLARE] = func_declare_handler;
 	HANDLE_DISPATCH[NODE_VAR_DECLARE] = var_declare_handler;
@@ -666,6 +735,8 @@ void init_dispatch_table()
 	HANDLE_DISPATCH[NODE_RETURN] = return_handler;
 	HANDLE_DISPATCH[NODE_BREAK] = break_handler;
 	HANDLE_DISPATCH[NODE_PASS] = pass_handler;
+	HANDLE_DISPATCH[NODE_SCAN] = scan_handler;
+	HANDLE_DISPATCH[NODE_PRINT] = print_handler;
 
 	HANDLE_DISPATCH[NODE_IDENT] = ident_handler;
 	HANDLE_DISPATCH[NODE_LITERAL] = literal_handler;
@@ -697,6 +768,7 @@ void init_dispatch_table()
 
 	HANDLE_DISPATCH[NODE_FUNC_CALL] = func_call_handler;
 	HANDLE_DISPATCH[NODE_BLOCK] = block_handler;
+
 }
 
 

@@ -1,0 +1,3 @@
+declare a:float = 5.56b;
+declare str:string = "hello;
+print(a*1.2.6);

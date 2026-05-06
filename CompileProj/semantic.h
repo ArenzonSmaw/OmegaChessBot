@@ -40,7 +40,7 @@ typedef struct symbol_node {
 	int is_initialized; 
 	AST initializer;
 	int is_init_const;
-	int init_const_val;
+	double init_const_val;
 
 	struct symbol_node* next;
 } symbol_link;
@@ -74,9 +74,9 @@ int symbol_exist(scope, char* name);
 scope init_scope(int level, scope parent);
 int hash(char* symbolname);
 
-int enter_scope(semanticer);
+void enter_scope(semanticer*);
 
-void exit_scope(semanticer);
+void exit_scope(semanticer*);
 
 void semanticize(semanticer*);
 

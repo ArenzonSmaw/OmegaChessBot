@@ -54,6 +54,8 @@ typedef enum
 	NODE_STMT_LIST,
 	NODE_TYPE_CAST,
 	NODE_PARAMETER,
+	NODE_PARAM_LIST,
+	NODE_ARG_LIST,
 
 	KIND_COUNT
 
@@ -80,9 +82,11 @@ typedef enum {
 	NONE = 3
 }data_type;
 
+type_kind TKN_TO_TYPE[SYMBOLS_COUNT];
 data_type KIND_TO_DATA[KIND_COUNT];
 //fills the kind_to_type array
 void fill_kind_to_data();
+void fill_tkn_to_type();
 
 
 

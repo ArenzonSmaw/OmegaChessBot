@@ -1,0 +1,5 @@
+declare taco:void ()
+{
+	print("taco");
+}
+taco();

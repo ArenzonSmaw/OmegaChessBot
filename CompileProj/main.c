@@ -80,6 +80,8 @@ int call_generate(context* ctx, semanticer* smt, char* out)
     ctx = init_context(output, smt->current_scope);
 
     code_generate(ctx, smt->ast);
+
+    fclose(output);
 }
 
 void preorder(AST ast)
@@ -243,8 +245,8 @@ int main(/*int argc, char* argv[]*/) {
 
 	//FILE* inp_file = fopen(argv[1], "r"); //INPUT
  //   FILE* out_file = fopen(argv[2], "w"); //OUTPUT
-    char* inp_file = "textexamples/inputexample1.txt";
-    char* out_file = "output/outexample1.txt";
+    char* inp_file = "textexamples/inputexample2.txt";
+    char* out_file = "output/target.asm";
 	lexer* lxr = NULL;
     parser* prsr = NULL;
     semanticer* smt = NULL;
@@ -259,14 +261,13 @@ int main(/*int argc, char* argv[]*/) {
     {
         successful = call_parse(&prsr, lxr, "output/parser_error.txt", "parser/slr.txt");
     }
-    postorder(prsr->ast);
     if (successful)
     {
         successful = call_semanticize(&smt, prsr, "output/semantic_error.txt");
     }
     if (successful)
     {
-        call_generate(ctx, prsr, out_file);
+        call_generate(ctx, smt, out_file);
     }
 
 

@@ -1,9 +1,7 @@
 #include "ast.h"
 #include <stdlib.h>
 
-type_kind TKN_TO_TYPE[SYMBOLS_COUNT];
-
-type_kind init_tkn_to_type()
+void fill_tkn_to_type()
 {
 	int i = 0;
 	for (i = 0; i < SYMBOLS_COUNT; i++)
@@ -26,6 +24,7 @@ void fill_kind_to_data()
 		KIND_TO_DATA[i] = NONE;
 	}
 	KIND_TO_DATA[NODE_LITERAL] = KIND_TO_DATA[NODE_UNDERLINE] = NUM;
+	KIND_TO_DATA[NODE_STRING] = KIND_TO_DATA[NODE_CHAR] = NAME;
 	KIND_TO_DATA[NODE_IDENT] = NAME;
 }
 
@@ -58,7 +57,7 @@ AST create_leaf(token* tkn, node_kind kind)
 		ast->col = tkn->col;
 
 		ast->type = TKN_TO_TYPE[tkn->type];
-		ast->type = dattype;
+		ast->dattype = dattype;
 
 		if (dattype == NUM)
 			ast->data.value = tkn->value;
