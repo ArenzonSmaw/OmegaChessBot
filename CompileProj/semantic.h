@@ -65,7 +65,7 @@ typedef struct {
 semanticer* init_semanticer(AST ast, char* error_out);
 
 symbol_link* create_symbol(char* name, semantic_kind, type_kind, int scope_level, int line, int col, int offset);
-void enter_symbol(scope, symbol);
+void enter_symbol(scope, symbol_link*);
 symbol_link* get_symbol(scope, char* name);
 symbol_link* extract_symbol(scope, char* name);
 int symbol_exist(scope, char* name);

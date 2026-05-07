@@ -243,9 +243,7 @@ void postorder(AST ast)
 
 int main(/*int argc, char* argv[]*/) {
 
-	//FILE* inp_file = fopen(argv[1], "r"); //INPUT
- //   FILE* out_file = fopen(argv[2], "w"); //OUTPUT
-    char* inp_file = "textexamples/inputexample2.txt";
+    char* inp_file = "textexamples/inputexample1.txt";
     char* out_file = "output/target.asm";
 	lexer* lxr = NULL;
     parser* prsr = NULL;

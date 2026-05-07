@@ -51,6 +51,7 @@ int new_label(context* ctx)
     /* returns the next label number */
     return ctx->label_count++;
 }
+
 int add_string(const char* str)
 {
     int i, found = -1;
@@ -64,6 +65,7 @@ int add_string(const char* str)
     strings[strings_count] = strdup(str);
     return strings_count++;
 }
+
 void reg_str_ret_buff(const char* fname)
 {
     int i, flag = 1;
@@ -166,14 +168,9 @@ void emit_store(context* ctx, symbol_link* sym)
             emit_line(ctx, "mov [bp - %d], bx", sym->offset - 2);
     }
 }
-
 void emit_label(context* ctx, const char* label)
 {
     fprintf(ctx->out, "%s:\n", label);
-}
-void emit_jmp(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjmp %s\n", label);
 }
 
 void emit_global_var(context* ctx, symbol_link* sym)
@@ -183,75 +180,7 @@ void emit_global_var(context* ctx, symbol_link* sym)
     else
         emit_string(ctx, global_frmts[sym->type], sym->name);
 }
-//conditional jmps 
-void emit_je(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tje %s\n", label);
-}
-void emit_jne(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjne %s\n", label);
-}
-void emit_jl(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjl %s\n", label);
-}
-void emit_jg(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjg %s\n", label);
-}
-void emit_jle(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjle %s\n", label);
-}
-void emit_jge(context* ctx, const char* label)
-{
-    fprintf(ctx->out, "\tjge %s\n", label);
-}
 
-void emit_mov_ax_imm(context* ctx, int value)
-{
-    fprintf(ctx->out, "\tmov ax, %d\n", value);
-}
-void emit_mov_ax_var(context* ctx, symbol_link* sym)
-{
-    if (!sym)
-        fprintf(ctx->out, "\tmov ax, 0\n");
-    else if (sym->is_global)
-        fprintf(ctx->out, "\tmov ax, [%s]\n", sym->name);
-    else
-        fprintf(ctx->out, "\tmov ax, [bp-%d]\n", sym->offset);
-}
-void emit_mov_var_ax(context* ctx, symbol_link* sym)
-{
-    if (sym->is_global)
-        fprintf(ctx->out, "\tmov [%s], ax\n", sym->name);
-    else
-        fprintf(ctx->out, "\tmov [bp-%d], ax\n", sym->offset);
-}
-
-void emit_push_ax(context* ctx) { emit_line(ctx, "push ax"); }
-void emit_pop_ax(context* ctx) { emit_line(ctx, "pop ax"); }
-void emit_pop_bx(context* ctx) { emit_line(ctx, "pop bx"); }
-void emit_mov_bx_ax(context* ctx) { emit_line(ctx, "mov bx, ax"); }
-
-void emit_add_ax_bx(context* ctx) { emit_line(ctx, "add ax, bx"); }
-void emit_sub_ax_bx(context* ctx) { emit_line(ctx, "sub ax, bx"); }
-void emit_mul_bx(context* ctx) { emit_line(ctx, "imul bx"); }
-void emit_div_bx(context* ctx)
-{
-    emit_line(ctx, "cwd");
-    emit_line(ctx, "idiv bx");
-}
-void emit_mod_bx(context* ctx)
-{
-    emit_line(ctx, "cwd");
-    emit_line(ctx, "idiv bx");
-    emit_line(ctx, "mov ax, dx");
-}
-
-void emit_cmp_ax_bx(context* ctx) { emit_line(ctx, "cmp ax, bx"); }
-void emit_cmp_ax_0(context* ctx) { emit_line(ctx, "cmp ax, 0"); }
 
 void emit_print_int_proc(context* ctx)
 {
@@ -337,6 +266,156 @@ void emit_print_float_proc(context* ctx)
     emit_line(ctx, "print_float endp\n");
 }
 
+void emit_scan_int_proc(context* ctx)
+{
+    emit_string(ctx, "scan_int PROC\n");
+    emit_line(ctx, "mov bx, 0");
+    emit_string(ctx, "_scan_int:\n");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+
+    emit_line(ctx, "cmp al, 0Dh");
+    emit_line(ctx, "je _scan_int_done");
+
+    emit_line(ctx, "sub al, '0'");
+    emit_line(ctx, "cbw");
+    emit_line(ctx, "xchg ax, bx");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "jmp _scan_int");
+
+    emit_string(ctx, "_scan_int_done:\n");
+    emit_line(ctx, "mov ax, bx");
+    emit_string(ctx, "scan_int ENDP\n\n");
+
+}
+
+void emit_scan_float_proc(context* ctx)
+{
+    emit_string(ctx, "scan_float PROC\n");
+    emit_line(ctx, "mov bx, 0");
+
+    emit_string(ctx, "_scan_ipart:\n");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cmp al, 0Dh");
+    emit_line(ctx, "je _scan_ipart_end");
+    emit_line(ctx, "cmp al, '.'");
+    emit_line(ctx, "je _scan_fpart_start");
+
+    emit_line(ctx, "sub al, '0'");
+    emit_line(ctx, "cbw");
+    emit_line(ctx, "xchg ax, bx");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "jmp _scan_ipart");
+
+    emit_string(ctx, "_scan_fpart_start:\n");
+    emit_line(ctx, "push bx");
+    emit_string(ctx, "_scan_fpart:\n");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cmp al, 0Dh");
+    emit_line(ctx, "je _scan_fpart_end");
+
+    emit_line(ctx, "sub al, '0'");
+    emit_line(ctx, "cbw");
+    emit_line(ctx, "xchg ax, bx");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "jmp _scan_fpart");
+
+    emit_string(ctx, "_scan_fpart_end:\n");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "jmp _scan_float_done");
+    emit_string(ctx, "_scan_ipart_end:\n");
+    emit_line(ctx, "mov ax, bx");
+    emit_string(ctx, "_scan_float_done:\n");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "scan_float ENDP\n\n");
+}
+
+void emit_scan_rational_proc(context* ctx)
+{
+    emit_string(ctx, "scan_rational PROC\n");
+    emit_line(ctx, "mov bx, 0");
+
+    emit_string(ctx, "_scan_npart:\n");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cmp al, 0Dh");
+    emit_line(ctx, "je _scan_npart_end");
+    emit_line(ctx, "cmp al, '/'");
+    emit_line(ctx, "je _scan_dpart_start");
+
+    emit_line(ctx, "sub al, '0'");
+    emit_line(ctx, "cbw");
+    emit_line(ctx, "xchg ax, bx");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "jmp _scan_npart");
+
+    emit_string(ctx, "_scan_dpart_start:\n");
+    emit_line(ctx, "push bx");
+    emit_string(ctx, "_scan_dpart:\n");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cmp al, 0Dh");
+    emit_line(ctx, "je _scan_dpart_end");
+
+    emit_line(ctx, "sub al, '0'");
+    emit_line(ctx, "cbw");
+    emit_line(ctx, "xchg ax, bx");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "jmp _scan_dpart");
+
+    emit_string(ctx, "_scan_dpart_end:\n");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "jmp _scan_ratnal_done");
+    emit_string(ctx, "_scan_npart_end:\n");
+    emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "mov bx, 0");
+    emit_string(ctx, "_scan_ratnal_done:\n");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "scan_rational ENDP\n\n");
+}
+
+void emit_scan_bool_proc(context* ctx)
+{
+    emit_string(ctx, "scan_bool PROC\n");
+    emit_line(ctx, "mov ah, 1h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cmp al, 'y'");
+    emit_line(ctx, "je scan_bool_true");
+    emit_line(ctx, "cmp al, 'Y'");
+    emit_line(ctx, "je scan_bool_true");
+    emit_line(ctx, "cmp al, 't'");
+    emit_line(ctx, "je scan_bool_true");
+    emit_line(ctx, "cmp al, 'T'");
+    emit_line(ctx, "je scan_bool_true");
+    emit_line(ctx, "jmp scan_bool_true");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "jmp scan_bool_finish");
+    emit_string(ctx, "scan_bool_true:\n");
+    emit_line(ctx, "mov ax, 1");
+    emit_string(ctx, "scan_bool_finish:\n");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "scan_bool ENDP\n\n");
+}
+
 void emit_procedures(context* ctx)
 {
     emit_print_int_proc(ctx);
@@ -344,31 +423,70 @@ void emit_procedures(context* ctx)
     emit_print_string_proc(ctx);
     emit_print_rational_proc(ctx);
     emit_print_float_proc(ctx);
+
+    emit_scan_int_proc(ctx);
+    emit_scan_float_proc(ctx);
+    emit_scan_rational_proc(ctx);
+    emit_scan_bool_proc(ctx);
 }
 
 
-typedef void (*emit_noarg_func)(context*);
-static emit_noarg_func ARITH_CASE[6] = {
-    emit_add_ax_bx, /* NODE_ADD */
-    emit_sub_ax_bx, /* NODE_SUB */
-    emit_mul_bx,    /* NODE_MUL */
-    emit_div_bx,    /* NODE_DIV */
-    emit_mod_bx,    /* NODE_MOD */
-    emit_div_bx,    /* NODE_QUO  – integer quotient same as idiv result in ax */
-};
+void emit_scan_char(context* ctx)
+{
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "cbw");
+}
 
-/* conditional jumps: indexed by (node->kind - NODE_LOG_EQUAL) */
-typedef void (*emit_label_func)(context*, const char*);
-static emit_label_func LOGIC_CASE[6] = {
-    emit_je,  /* NODE_LOG_EQUAL    */
-    emit_jne, /* NODE_LOG_DIFFERENT*/
-    emit_jg,  /* NODE_GREAT        */
-    emit_jge, /* NODE_GREAT_EQUAL  */
-    emit_jl,  /* NODE_LESS         */
-    emit_jle, /* NODE_LESS_EQUAL   */
-};
+void emit_scan_str(context* ctx)
+{
+    int sid = strings_count++;
+
+    emit_string(ctx, "\n.DATA\n");
+    emit_string(ctx, "_scan_str_%d db 255, 0, 255 dup(0)\n", sid);
+    emit_string(ctx, ".CODE\n");
+
+    emit_line(ctx, "lea dx, [_scan_str_%d]", sid);
+    emit_line(ctx, "mov ah, 0Ah");
+    emit_line(ctx, "int 21h");
+
+    emit_line(ctx, "lea bx, [_scan_str_%d]", sid);
+    emit_line(ctx, "mov cl, [bx+1]");
+    emit_line(ctx, "mov ch, 0");
+    emit_line(ctx, "add bx, 2");
+    emit_line(ctx, "add bx, cx");
+    emit_line(ctx, "mov byte ptr [bx], '$'");
+    emit_line(ctx, "lea ax, [_scan_str_%d + 2]", sid);
+}
+
+void emit_scan_int(context* ctx)
+{
+    emit_line(ctx, "call scan_int");
+}
+
+void emit_scan_float(context* ctx)
+{
+    emit_line(ctx, "call scan_float");
+}
+
+void emit_scan_rational(context* ctx)
+{
+    emit_line(ctx, "call scan_rational");
+}
+
+void emit_scan_bool(context* ctx)
+{
+    emit_line(ctx, "call scan_bool");
+}
 
 
+
+
+
+void gen_node(context* ctx, AST node)
+{
+    GENERATOR[node->kind](ctx, node);
+}
 
 void gen_globals(context* ctx)
 {
@@ -382,6 +500,7 @@ void gen_globals(context* ctx)
         while (sym)
         {
             emit_global_var(ctx, sym);
+            sym = sym->next;
         }
     }
 }
@@ -390,12 +509,17 @@ void gen_stmt_list(context* ctx, AST node)
 {
     int i;
     for (i = 0; i < node->children_count; i++)
-        gen_node(ctx, node);
+        gen_node(ctx, node->children[i]);
 }
 
 void gen_block(context* ctx, AST node)
 {
     gen_node(ctx, node->children[0]);
+}
+
+void gen_expr(context* ctx, AST node)
+{
+    GENERATOR[node->kind](ctx, node);
 }
 
 void gen_var_declare(context* ctx, AST node)
@@ -431,10 +555,12 @@ void re_enter_params(context* ctx, AST prm_lst)
     for (i = 0; i < prm_lst->children_count; i++) {
         param = prm_lst->children[i];
         pname = param->children[0]->data.name;
-        psym = lookup(ctx, pname);
+        psym = extract_symbol(ctx->current_scope, pname);
         if (!psym)
         {
+            psym = create_symbol(pname, PARAM, param->children[1]->type, ctx->current_scope->level, param->line, param->col, 0);
         }
+        enter_symbol(ctx->current_scope, psym);
     }
 }
 void gen_func_declare(context* ctx, AST node)
@@ -545,25 +671,23 @@ void gen_pass(context* ctx, AST node)
 
 void gen_if(context* ctx, AST node)
 {
-    char* l_else = new_label(ctx, "else");
-    char* l_end = new_label(ctx);
+    int l_else = new_label(ctx);
+    int l_end = new_label(ctx);
 
     gen_expr(ctx, node->children[0]);   /* condition */
-    emit_cmp_ax_0(ctx);
-    emit_je(ctx, l_else);
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "je _lbl_%d ", l_else);
 
-    GENERATOR[node->children[1]->kind](ctx, node->children[1]); /* then */
+    gen_node(ctx, node->children[1]); /* then */
 
-    emit_string(ctx, "_lbl_%d:\n", l_end);
+    emit_line(ctx, "jmp _lbl_%d\n", l_end);
     emit_string(ctx, "_lbl_%d:\n", l_else);
 
     if (node->children_count > 2 && node->children[2])
-        GENERATOR[node->children[2]->kind](ctx, node->children[2]); /* else */
+        gen_node(ctx, node->children[2]); /* else */
 
     emit_string(ctx, "_lbl_%d:\n", l_end);
 
-    free(l_else);
-    free(l_end);
 }
 
 void gen_loop(context* ctx, AST node)
@@ -589,13 +713,7 @@ void gen_loop(context* ctx, AST node)
         emit_line(ctx, "loop _lbl_%d", top_lbl);
     }
     else {
-        /*--------------------------------------------------------------
-         * For loop:  loop( decl var = start -> end ; step ) { block }
-         * children[0] = var decl node (NODE_VAR_DECLARE)
-         * children[1] = limit expr
-         * children[2] = step stmt
-         * children[3] = block
-         *------------------------------------------------------------*/
+
         int top_lbl = new_label(ctx);
         int cont_lbl = new_label(ctx);
 
@@ -666,10 +784,12 @@ void gen_scan(context* ctx, AST node)
         emit_scan_int(ctx);
     else if (type == TYPE_CHAR)
         emit_scan_char(ctx);
-    else if (type == TYPE_RATIONAL || TYPE_FLOAT)
-    {
-    }
-    else if (type == TYPE_BOOL);
+    else if (type == TYPE_RATIONAL)
+        emit_scan_rational(ctx);
+    else if (type == TYPE_FLOAT)
+        emit_scan_float(ctx);
+    else if (type == TYPE_BOOL)
+        emit_scan_bool(ctx);
 }
 
 void gen_use(context* ctx, AST node)
@@ -677,276 +797,338 @@ void gen_use(context* ctx, AST node)
     gen_node(ctx, node->children[0]);
 }
 
-//
-static void gen_expr(context* ctx, AST node)
-{
-    GENERATOR[node->kind](ctx, node);
-}
-
 void gen_literal(context* ctx, AST node)
 {
-    emit_mov_ax_imm(ctx, (int)node->data.value);
-}
+    type_kind type = node->type;
+    int idx, ipart, fpart;
 
-void gen_char(context* ctx, AST node)
-{
-    emit_mov_ax_imm(ctx, (int)node->data.value);
-}
-
-void gen_string(context* ctx, AST node)
-{
-    fprintf(ctx->out, "\tlea ax, [%s]\n", node->data.name);
+    if (type == TYPE_STRING)
+    {
+        idx = add_string(node->data.name);
+        emit_line(ctx, "lea ax, [_str_%d]", idx);
+    }
+    else if (type == TYPE_CHAR)
+    {
+        emit_line(ctx, "mov ax, %d", (int)(node->data.name[0]));
+    }
+    else if (type == TYPE_BOOL || type == TYPE_INT || type == TYPE_NATURAL)
+    {
+        emit_line(ctx, "mov ax, %d", (int)(node->data.value));
+    }
+    else if (type == TYPE_FLOAT)
+    {
+        ipart = (int)(node->data.value);
+        fpart = (int)((node->data.value - ipart) * 100);
+        emit_line(ctx, "mov ax, %d \nmov bx, %d", ipart, fpart);
+    }
+    else if (type == TYPE_RATIONAL)
+    {
+        //
+    }
 }
 
 void gen_ident(context* ctx, AST node)
 {
-    symbol_link* sym = get_symbol(ctx->current_scope, node->data.name);
-    emit_mov_ax_var(ctx, sym);          
+    symbol_link* sym = lookup(ctx, node->data.name);
+    if (sym)
+        emit_load(ctx, sym);          
+}
+
+static void gen_underline(context* ctx, AST node)
+{
+    emit_line(ctx, "mov ax, [_UNDERLINE]");
+}
+
+void call_cleanup(context* ctx, symbol_link* funcsym, int count)
+{
+    int total_bytes = 0, i;
+    type_kind prmtype;
+    if (count > 0)
+    {
+        if (funcsym)
+        {
+            for (i = 0; i < funcsym->param_count; i++)
+            {
+                total_bytes += 2;
+                prmtype = funcsym->params[i].type;
+                if (prmtype == TYPE_RATIONAL || prmtype == TYPE_FLOAT)
+                    total_bytes += 2;
+            }
+        }
+        else
+            total_bytes = count * 2;
+        emit_line(ctx, "add sp, %d", total_bytes);
+    }
+}
+
+void gen_func_call(context* ctx, AST node)
+{
+    symbol_link* funcsym;
+    char* fname = node->children[0]->data.name;
+    AST arg_list = node->children[1];
+    int count = arg_list ? arg_list->children_count : 0;
+    int total_bytes = 0, i;
+    type_kind argtype;
+    for (int i = count - 1; i >= 0; i--)
+    {
+        gen_expr(ctx, arg_list->children[i]);
+        argtype = arg_list->children[i]->type;
+        if (argtype == TYPE_RATIONAL || argtype == TYPE_FLOAT)
+            emit_line(ctx, "push bx");
+        emit_line(ctx, "push ax");
+    }
+
+    emit_line(ctx, "call %s", fname);
+
+    call_cleanup(ctx, lookup(ctx, fname), count);
+}
+
+void gen_unary(context* ctx, AST node)
+{
+    node_kind kind = node->kind;
+    gen_expr(ctx, node->children[0]);
+
+    if (kind == NODE_LOG_NOT)
+    {
+        emit_line(ctx, "cmp ax, 0");
+        emit_line(ctx, "mov ax, 0");
+        emit_line(ctx, "sete al");
+    }
+    else if (kind == NODE_BIT_NOT)
+    {
+        emit_line(ctx, "not ax");
+    }
+    else if (kind == NODE_SUB)
+    {
+        emit_line(ctx, "neg ax");
+    }
+}
+
+void gen_add(context* ctx)
+{
+    emit_line(ctx, "add ax, bx");
+}
+void gen_sub(context* ctx)
+{
+    emit_line(ctx, "sub ax, bx");
+}
+void gen_mul(context* ctx)
+{
+    emit_line(ctx, "imul bx");
+}
+void gen_div(context* ctx)
+{
+    emit_line(ctx, "cwd");
+    emit_line(ctx, "idiv bx");
+}
+void gen_mod(context* ctx)
+{
+    gen_div(ctx);
+    emit_line(ctx, "mov ax, dx");
+}
+void gen_quo(context* ctx)
+{
+    gen_div(ctx);
+}
+
+void gen_equal(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "sete al");
+}
+void gen_different(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "setne al");
+}
+void gen_greater(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "setg al");
+}
+void gen_grt_eq(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "je  _true");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "jmp _done");
+    emit_string(ctx, "_true :\n");
+    emit_line(ctx, "mov ax, 1");
+    emit_string(ctx, "_done :\n ");
+}
+void gen_less(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "setl al");
+}
+void gen_lss_eq(context* ctx)
+{
+    emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "setle al");
+}
+
+void gen_log_or(context* ctx)
+{
+    int lbl = new_label(ctx);
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "jne _lor_true_%d", lbl);
+    emit_line(ctx, "cmp bx, 0");
+    emit_line(ctx, "jne _lor_true_%d", lbl);
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "jmp _lor_done_%d", lbl);
+    emit_string(ctx, "_lor_true_%d:\n", lbl);
+    emit_line(ctx, "mov ax, 1");
+    emit_string(ctx, "_lor_done_%d:\n", lbl);
+}
+void gen_log_and(context* ctx)
+{
+    int lbl = new_label(ctx);
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "je _land_false_%d", lbl);
+    emit_line(ctx, "cmp bx, 0");
+    emit_line(ctx, "je _land_false_%d", lbl);
+    emit_line(ctx, "mov ax, 1");
+    emit_line(ctx, "jmp _land_done_%d", lbl);
+    emit_string(ctx, "_land_false_%d:\n", lbl);
+    emit_line(ctx, "mov ax, 0");
+    emit_string(ctx, "_land_done_%d:\n", lbl);
+}
+void gen_log_not(context* ctx)
+{
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "mov ax, 0");
+    emit_line(ctx, "sete al");
+}
+
+void gen_bit_or(context* ctx)
+{
+    emit_line(ctx, "or ax, bx");
+}
+void gen_bit_and(context* ctx)
+{
+    emit_line(ctx, "and ax, bx");
+}
+void gen_bit_not(context* ctx)
+{
+    emit_line(ctx, "not ax");
+}
+void gen_shl(context* ctx)
+{
+    emit_line(ctx, "mov cl, bl");
+    emit_line(ctx, "sal ax, cl");
+}
+void gen_shr(context* ctx)
+{
+    emit_line(ctx, "mov cl, bl");
+    emit_line(ctx, "sar ax, cl");
+}
+void gen_xor(context* ctx)
+{
+    emit_line(ctx, "xor ax, bx");
+}
+
+
+typedef void (*emit_noarg_func)(context*);
+static emit_noarg_func BINARY_OP[21] = {
+
+    gen_add, //NODE_ADD
+    gen_sub, //NODE_SUB
+    gen_mul, //NODE_MUL
+    gen_div, //NODE_DIV
+    gen_div, //NODE_MOD
+    gen_quo, //NODE_QUO
+    gen_log_or, //NODE_LOG_OR
+    gen_bit_or, //NODE_BIT_OR
+    gen_log_and, //NODE_LOG_AND
+    gen_bit_and, //NODE_BIT_AND
+    gen_log_not, //NODE_LOG_NOT
+    gen_bit_not, //NODE_BIT_NOT
+    gen_shr, //NODE_BIT_RIGHT
+    gen_shl, //NODE_BIT_LEFT
+    gen_equal, //NODE_LOG_EQUAL
+    gen_different, //NODE_LOG_DIFFERENT
+    gen_greater, //NODE_GREAT
+    gen_grt_eq,//NODE_GREAT_EQUAL
+    gen_less, //NODE_LESS
+    gen_lss_eq, //NODE_LESS_EQUAL
+    gen_xor //NODE_XOR
+
+};
+
+void gen_binary(context* ctx, AST node)
+{
+    gen_expr(ctx, node->children[0]);
+    emit_line(ctx, "push ax");
+
+    gen_expr(ctx, node->children[1]);
+    emit_line(ctx, "mov bx, ax"); 
+    emit_line(ctx, "pop ax");       
+
+    BINARY_OP[node->kind - NODE_ADD](ctx);
+}
+
+void gen_type_cast(context* ctx, AST node)
+{
+    gen_expr(ctx, node->children[1]);
+    type_kind to = node->children[0]->type, 
+            from = node->children[1]->type;
+
+    if (from != to)
+    {
+        if (to == TYPE_FLOAT)
+            emit_line(ctx, "mov bx, 0");
+        else if (to == TYPE_RATIONAL && from != TYPE_FLOAT)
+            emit_line(ctx, "mov bx, 1");
+        else if (to == TYPE_RATIONAL && from == TYPE_FLOAT)
+        {
+            emit_line(ctx, "cwd");
+            emit_line(ctx, "idiv bx");
+        }
+        else if (to == TYPE_CHAR)
+            emit_line(ctx, "cbw");
+        else if (to == TYPE_BOOL)
+        {
+            emit_line(ctx, "cmp ax, 0");
+            emit_line(ctx, "mov ax, 0");
+            emit_line(ctx, "setne al");
+        }
+    }
+}
+
+void gen_parameter(context* ctx, AST node) {}
+
+//
+
+void gen_char(context* ctx, AST node)
+{
+    emit_line(ctx, "mov ax, %d", node->data.value);
+}
+
+void gen_string(context* ctx, AST node)
+{
+    int idx = add_string(node->data.name);
+    emit_line(ctx, "lea ax, [_str_%d]", idx);
 }
 
 void gen_last_value(context* ctx, AST node)
 {
-    /* NODE_UNDERLINE: load the UNDERLINE variable (last expression result) */
-    fprintf(ctx->out, "\tmov ax, [UNDERLINE]\n");
-}
-
-//arithmetic binary (ADD SUB MUL DIV MOD QUO) 
-void gen_arith(context* ctx, AST node)
-{
-    gen_expr(ctx, node->children[0]);
-    emit_push_ax(ctx);
-
-    gen_expr(ctx, node->children[1]);
-    emit_mov_bx_ax(ctx);    /* bx = right operand  */
-    emit_pop_ax(ctx);       /* ax = left operand   */
-
-    ARITH_CASE[node->kind - NODE_ADD](ctx);
+    emit_line(ctx, "mov ax, [_UNDERLINE]");
 }
 
 
-void gen_logic_cmpr(context* ctx, AST node)
-{
-    gen_expr(ctx, node->children[0]);
-    emit_push_ax(ctx);
-
-    gen_expr(ctx, node->children[1]);
-    emit_mov_bx_ax(ctx);
-    emit_pop_ax(ctx);
-
-    emit_cmp_ax_bx(ctx);
-
-    char* l_true = new_label(ctx, "true");
-    char* l_end = new_label(ctx, "end");
-
-    LOGIC_CASE[node->kind - NODE_LOG_EQUAL](ctx, l_true);  /* FIX: was using ARITH_CASE */
-
-    emit_mov_ax_imm(ctx, 0);
-    emit_jmp(ctx, l_end);
-
-    emit_label(ctx, l_true);
-    emit_mov_ax_imm(ctx, 1);
-
-    emit_label(ctx, l_end);
-
-    free(l_true);
-    free(l_end);
-}
-
-/* ?? logical AND / OR / NOT ?? */
-void gen_logic(context* ctx, AST node)
-{
-    char* l_end = new_label(ctx, "end");
-
-    if (node->kind == NODE_LOG_NOT)
-    {
-        gen_expr(ctx, node->children[0]);
-        emit_cmp_ax_0(ctx);
-        char* l_true = new_label(ctx, "true");
-        emit_je(ctx, l_true);
-        emit_mov_ax_imm(ctx, 0);
-        emit_jmp(ctx, l_end);
-        emit_label(ctx, l_true);
-        emit_mov_ax_imm(ctx, 1);
-        emit_label(ctx, l_end);
-        free(l_true);
-    }
-    else if (node->kind == NODE_LOG_AND)
-    {
-        /* short-circuit: if left == 0, result is 0 */
-        gen_expr(ctx, node->children[0]);
-        emit_cmp_ax_0(ctx);
-        emit_je(ctx, l_end);            /* ax is already 0 */
-        gen_expr(ctx, node->children[1]);
-        emit_cmp_ax_0(ctx);
-        char* l_false = new_label(ctx, "false");
-        emit_je(ctx, l_false);
-        emit_mov_ax_imm(ctx, 1);
-        emit_jmp(ctx, l_end);
-        emit_label(ctx, l_false);
-        emit_mov_ax_imm(ctx, 0);
-        emit_label(ctx, l_end);
-        free(l_false);
-    }
-    else /* NODE_LOG_OR */
-    {
-        /* short-circuit: if left != 0, result is 1 */
-        char* l_true = new_label(ctx, "true");
-        gen_expr(ctx, node->children[0]);
-        emit_cmp_ax_0(ctx);
-        emit_jne(ctx, l_true);
-        gen_expr(ctx, node->children[1]);
-        emit_cmp_ax_0(ctx);
-        emit_jne(ctx, l_true);
-        emit_mov_ax_imm(ctx, 0);
-        emit_jmp(ctx, l_end);
-        emit_label(ctx, l_true);
-        emit_mov_ax_imm(ctx, 1);
-        emit_label(ctx, l_end);
-        free(l_true);
-    }
-
-    free(l_end);
-}
-
-/* ?? bitwise binary (AND OR XOR SHL SHR NOT) ?? */
-void gen_bit(context* ctx, AST node)
-{
-    if (node->kind == NODE_BIT_NOT)
-    {
-        gen_expr(ctx, node->children[0]);
-        emit_line(ctx, "not ax");
-        return;
-    }
-
-    gen_expr(ctx, node->children[0]);
-    emit_push_ax(ctx);
-    gen_expr(ctx, node->children[1]);
-    emit_mov_bx_ax(ctx);
-    emit_pop_ax(ctx);
-
-    switch (node->kind)
-    {
-    case NODE_BIT_AND:   
-        emit_line(ctx, "and ax, bx");  
-        break;
-    case NODE_BIT_OR:    
-        emit_line(ctx, "or ax, bx");   
-        break;
-    case NODE_XOR:       
-        emit_line(ctx, "xor ax, bx");  
-        break;
-    default: 
-        break;
-    }
-}
-
-void gen_bit_or(context* ctx, AST node) 
-{ 
-    gen_bit(ctx, node); 
-}
-
-void gen_bit_shl(context* ctx, AST node)
-{
-    gen_expr(ctx, node->children[0]);
-    emit_push_ax(ctx);
-    gen_expr(ctx, node->children[1]);
-    /* shift count must be in CL */
-    emit_line(ctx, "mov cx, ax");
-    emit_pop_ax(ctx);
-    emit_line(ctx, "shl ax, cl");
-}
-
-void gen_bit_shr(context* ctx, AST node)
-{
-    gen_expr(ctx, node->children[0]);
-    emit_push_ax(ctx);
-    gen_expr(ctx, node->children[1]);
-    emit_line(ctx, "mov cx, ax");
-    emit_pop_ax(ctx);
-    emit_line(ctx, "sar ax, cl");   /* arithmetic shift right to preserve sign */
-}
-
-/* ?? type cast ?? */
-void gen_type_cast(context* ctx, AST node)
-{
-    /* children[0] = type node (kind encodes target type)
-       children[1] = expression to cast                   */
-    gen_expr(ctx, node->children[1]);
-    /* For int<->char the value is already in ax.
-       Extend/truncate as needed based on target type. */
-    node_kind target = node->children[0]->kind;
-    if (target == NODE_CHAR)
-        emit_line(ctx, "and ax, 00FFh");   /* keep low byte */
-    /* int / natural / rational: ax already holds the value */
-}
-
-/* ?? scan (runtime read) ?? */
-
-
-/* ?? print ?? */
-
-
-
-void gen_func_call(context* ctx, AST node)
-{
-    AST arg_list = node->children[1];
-    for (int i = arg_list->children_count - 1; i >= 0; i--)
-    {
-        gen_expr(ctx, arg_list->children[i]);
-        emit_push_ax(ctx);
-    }
-
-    fprintf(ctx->out, "\tcall %s\n", node->children[0]->data.name);
-
-    /* clean up the stack (cdecl caller cleanup) */
-    if (arg_list->children_count > 0)
-        fprintf(ctx->out, "\tadd sp, %d\n", arg_list->children_count * 2);
-}
-
-/* ?? parameter node (used only as declaration metadata, no code) ?? */
-void gen_parameter(context* ctx, AST node)
-{
-    (void)ctx; (void)node;
-    /* nothing to emit for a bare parameter node */
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   /* USE declaration: e.g. "use : expr" – evaluate and discard */
-
-
-/* Function declaration */
-
-
-void gen_node(context* ctx, AST node)
-{
-    GENERATOR[node->kind](ctx, node);
-}
-
-/* Start / entry-point node */
 void gen_start(context* ctx, AST node)
 {
     emit_string(ctx, ".MODEL SMALL\n");
     emit_string(ctx, ".STACK 100h\n");
     emit_string(ctx, ".DATA\n");
     emit_string(ctx, "; --- global variables ---\n");
-
+    //gen_globals(ctx);
     emit_string(ctx, "_UNDERLINE dw 0\n");
     emit_string(ctx, "_UNDERLINE_hi dw 0\n");
     underline_emitted = 1;
@@ -1004,15 +1186,8 @@ void init_generator_tbl()
     GENERATOR[NODE_SCAN] = gen_scan; 
     GENERATOR[NODE_PRINT] = gen_print; 
 
-    for (i = NODE_ADD; i <= NODE_QUO; i++)
-        GENERATOR[i] = gen_arith;
-    GENERATOR[NODE_LOG_OR] = GENERATOR[NODE_LOG_AND] = GENERATOR[NODE_LOG_NOT] = gen_logic;
-    for (i = NODE_LOG_EQUAL; i <= NODE_LESS_EQUAL; i++)
-        GENERATOR[i] = gen_logic_cmpr;
-    GENERATOR[NODE_BIT_AND] = GENERATOR[NODE_BIT_NOT] = GENERATOR[NODE_XOR] = gen_bit;
-    GENERATOR[NODE_BIT_OR] = gen_bit_or;
-    GENERATOR[NODE_BIT_RIGHT] = gen_bit_shr;
-    GENERATOR[NODE_BIT_LEFT] = gen_bit_shl;
+    for (i = NODE_ADD; i <= NODE_XOR; i++)
+        GENERATOR[i] = gen_binary;
 
     GENERATOR[NODE_FUNC_CALL] = gen_func_call;
     GENERATOR[NODE_BLOCK] = gen_block;
