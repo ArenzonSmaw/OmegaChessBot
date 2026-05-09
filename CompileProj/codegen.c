@@ -38,6 +38,7 @@ context* init_context(FILE* out, scope global)
     {
         ctx->out = out;
         ctx->current_scope = global;
+        
         ctx->label_count = 0;
         ctx->temp_count = 0;
 
@@ -96,8 +97,11 @@ void exit_ctx_scope(context* ctx)
     scope temp = ctx->current_scope;
     ctx->current_scope = temp->parent;
 
-    if (ctx->current_scope && temp->offset_next > ctx->current_scope->offset_next)
-        ctx->current_scope->offset_next = temp->offset_next;
+    if (ctx->current_scope)
+    {
+        ctx->current_scope->param_offset_next = temp->param_offset_next;
+        ctx->current_scope->local_offset_next = temp->local_offset_next;
+    }
 
     for (i = 0; i < TABLE_ROWS; i++) {
         sym = temp->table[i];
@@ -110,13 +114,6 @@ void exit_ctx_scope(context* ctx)
     }
 
     free(temp);
-}
-
-int type_size(type_kind type)
-{
-    if (type == TYPE_FLOAT || type == TYPE_RATIONAL)
-        return 4;
-    return 2;
 }
 
 
@@ -347,10 +344,22 @@ void emit_scan_int_proc(context* ctx)
 {
     emit_string(ctx, "scan_int PROC\n");
     emit_line(ctx, "mov bx, 0");
+    emit_line(ctx, "mov dx, 0");
+    emit_line(ctx, "mov ah, 01h");
+    emit_line(ctx, "int 21h");
+
+    emit_line(ctx, "cmp al, '-'");
+    emit_line(ctx, "jne _scan_int_cont_1");
+    emit_line(ctx, "mov dx, 1");
+    emit_string(ctx, "_scan_int_cont_1:\n");
+    emit_line(ctx, "push dx");
+    emit_line(ctx, "jne _scan_int_cont_2");
+
     emit_string(ctx, "_scan_int:\n");
     emit_line(ctx, "mov ah, 01h");
     emit_line(ctx, "int 21h");
 
+    emit_string(ctx, "_scan_int_cont_2:\n");
     emit_line(ctx, "cmp al, 0Dh");
     emit_line(ctx, "je _scan_int_done");
 
@@ -365,6 +374,12 @@ void emit_scan_int_proc(context* ctx)
 
     emit_string(ctx, "_scan_int_done:\n");
     emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "pop dx");
+    emit_line(ctx, "cmp dx, 0");
+    emit_line(ctx, "je _scan_int_ret");
+    emit_line(ctx, "neg ax");
+
+    emit_string(ctx, "_scan_int_ret:\n");
     emit_line(ctx, "ret");
     emit_string(ctx, "scan_int ENDP\n\n");
 
@@ -605,10 +620,20 @@ void gen_var_declare(context* ctx, AST node)
 {
     AST param = node->children[0];
     AST id;
+    int offset;
+
     if (param->kind == NODE_PARAMETER)
+    {
         id = param->children[1];
+        offset = ctx->current_scope->param_offset_next;
+        ctx->current_scope->param_offset_next += type_size(param->type);
+    }
     else
+    {
         id = param;
+        offset = ctx->current_scope->local_offset_next;
+        ctx->current_scope->local_offset_next += type_size(param->type);
+    }
 
     symbol_link* sym = get_symbol(ctx->current_scope, id->name);
 
@@ -622,10 +647,8 @@ void gen_var_declare(context* ctx, AST node)
     {
         enter_symbol(ctx->current_scope, 
             create_symbol(id->name, VARIABLE, param->children[0]->type,
-                NULL , ctx->current_scope->level, id->line, id->col, 
-                ctx->current_scope->offset_next));
+                NULL , ctx->current_scope->level, id->line, id->col, offset));
         sym = get_symbol(ctx->current_scope, id->name);
-        ctx->current_scope->offset_next += type_size(sym->type);
     }
     if (node->children_count == 2 && node->children[1])
     {
@@ -649,8 +672,8 @@ void re_enter_params(context* ctx, AST prm_lst)
         {
             psym = create_symbol(pname, PARAM, param->children[0]->type, NULL, 
                 ctx->current_scope->level, param->line, param->col, 
-                ctx->current_scope->offset_next);
-            ctx->current_scope->offset_next += type_size(psym->type);
+                ctx->current_scope->param_offset_next);
+            ctx->current_scope->param_offset_next += type_size(psym->type);
             psym->is_param = 1;
         }
         enter_symbol(ctx->current_scope, psym);
@@ -686,11 +709,11 @@ void gen_func_declare(context* ctx, AST node)
     emit_line(ctx, "push di");
 
     enter_ctx_scope(ctx);
-
+    ctx->current_scope->param_offset_next += 2; // caller IP in stack
     if (param_list)
         re_enter_params(ctx, param_list);
 
-    int local_size = ctx->current_scope->offset_next;
+    int local_size = ctx->current_scope->local_offset_next;
     if (local_size > 0)
         emit_line(ctx, "sub sp, %d", local_size);
 
@@ -1036,10 +1059,10 @@ void gen_equal(context* ctx)
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
     emit_line(ctx, "jne _equal_false_%d", lbl);
-    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _equal_end_%d", lbl);
     emit_string(ctx, "_equal_false_%d:\n", lbl);
-    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_equal_end_%d:\n", lbl);
 }
 void gen_different(context* ctx)
@@ -1047,10 +1070,10 @@ void gen_different(context* ctx)
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
     emit_line(ctx, "je _diff_false_%d", lbl);
-    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _diff_end_%d", lbl);
     emit_string(ctx, "_diff_false_%d:\n", lbl);
-    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_diff_end_%d:\n", lbl);
 }
 void gen_greater(context* ctx)
@@ -1058,10 +1081,10 @@ void gen_greater(context* ctx)
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
     emit_line(ctx, "jng _grtr_false_%d", lbl);
-    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _grtr_end_%d", lbl);
     emit_string(ctx, "_grtr_false_%d:\n", lbl);
-    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
 void gen_grt_eq(context* ctx)
@@ -1080,10 +1103,10 @@ void gen_less(context* ctx)
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
     emit_line(ctx, "jnl _less_false_%d", lbl);
-    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _less_end_%d", lbl);
     emit_string(ctx, "_less_false_%d:\n", lbl);
-    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_less_end_%d:\n", lbl);
 }
 void gen_lss_eq(context* ctx)
@@ -1091,10 +1114,10 @@ void gen_lss_eq(context* ctx)
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
     emit_line(ctx, "jle _grtr_true_%d", lbl);
-    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "mov ax, 0");
     emit_line(ctx, "jmp _grtr_end_%d", lbl);
     emit_string(ctx, "_grtr_true_%d:\n", lbl);
-    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "mov ax, 1");
     emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
 
@@ -1194,13 +1217,20 @@ static emit_noarg_func BINARY_OP[21] = {
 void gen_binary(context* ctx, AST node)
 {
     gen_expr(ctx, node->children[0]);
-    emit_line(ctx, "push ax");
 
-    gen_expr(ctx, node->children[1]);
-    emit_line(ctx, "mov bx, ax"); 
-    emit_line(ctx, "pop ax");       
+    if (node->children[1])
+    {
+        emit_line(ctx, "push ax");
+        gen_expr(ctx, node->children[1]);
+        emit_line(ctx, "mov bx, ax");
+        emit_line(ctx, "pop ax");
 
-    BINARY_OP[node->kind - NODE_ADD](ctx);
+        BINARY_OP[node->kind - NODE_ADD](ctx);
+    }
+    else
+    {
+        gen_unary(ctx, node);
+    }
 
     emit_line(ctx, "mov [_UNDERLINE], ax");
 }
@@ -1268,16 +1298,22 @@ void gen_start(context* ctx, AST node)
     emit_string(ctx, "; --- code section ---\n");
     emit_string(ctx, ".CODE\n");
     emit_string(ctx, "MAIN PROC\n");
-    emit_string(ctx, "\tmov ax, DGROUP\n");
-    emit_string(ctx, "\tmov ds, ax\n");
-    emit_string(ctx, "\tmov es, ax\n");
+    emit_line(ctx, "mov ax, DGROUP");
+    emit_line(ctx, "mov ds, ax");
+    emit_line(ctx, "mov es, ax");
+
+    emit_line(ctx, "sub sp, %d", ctx->current_scope->local_offset_next);
+    ctx->current_scope->local_offset_next = ctx->current_scope->param_offset_next = 2;
 
     func_buff = fopen("output/funcbuff.txt", "w");
     gen_node(ctx, node->children[0]);
     fclose(func_buff);
 
-    emit_string(ctx, "\tmov ax, 4C00h\n");
-    emit_string(ctx, "\tint 21h\n");
+    emit_line(ctx, "mov dl, 0Ah");
+    emit_line(ctx, "call print_char");
+    emit_line(ctx, "mov ax, 4C00h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
     emit_string(ctx, "MAIN ENDP\n\n");
 
     emit_func_buffer(ctx);

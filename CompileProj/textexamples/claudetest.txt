@@ -1,0 +1,51 @@
+declare factorial:int (n:int)
+{
+    if (n <= 1)
+    {
+        return 1;
+    }
+    else
+    {
+        return n * factorial(n - 1);
+    }
+}
+
+declare fizzbuzz:int (n:int)
+{
+    if (n % 15 == 0)
+    {
+        print("FizzBuzz");
+    }
+    else (n % 3 == 0)
+    {
+        print("Fizz");
+    }
+    else (n % 5 == 0)
+    {
+        print("Buzz");
+    }
+    else
+    {
+        print(n);
+    }
+    print('\');
+    return 0;
+}
+
+declare ch:char = 'A';
+loop (declare i:int = 1 -> 10; i++;)
+{
+    print(ch);
+    print(": ");
+    print(factorial(i));
+    print('\');
+	scan(char);
+    ch++;
+}
+
+print('\');
+loop (declare i:int = 1 -> 20; i++;)
+{
+    fizzbuzz(i);
+	scan(char);
+}

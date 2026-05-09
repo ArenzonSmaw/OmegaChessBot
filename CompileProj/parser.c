@@ -318,7 +318,7 @@ void reduce_prefix_arith(parser* prsr, symbol lhs)
 	operator = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
 
-	alloc_children(operator->node, 1);
+	alloc_children(operator->node, 2);
 	add_son(operator->node, factor->node);
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), operator->tkn, operator->node, prsr->state);
@@ -335,7 +335,7 @@ void reduce_postfix_arith(parser* prsr, symbol lhs)
 	factor = pop(&(prsr->stck));
 	prev_state = top(&(prsr->stck))->state;
 
-	alloc_children(operator->node, 1);
+	alloc_children(operator->node, 2);
 	add_son(operator->node, factor->node);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
@@ -699,13 +699,14 @@ void reduce_else_if(parser* prsr, symbol lhs)
 	while (ifstmt->children[2] != NULL)
 		ifstmt = ifstmt->children[2];
 
+	elskw->node->kind = NODE_IF;
 	alloc_children(elskw->node, 3);
 	insert_son(elskw->node, expr->node, 0);
 	insert_son(elskw->node, block->node, 1);
 	insert_son(ifstmt, elskw->node, 2);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
-	push(&(prsr->stck), elskw->tkn, elskw->node, prsr->state);
+	push(&(prsr->stck), ifkw->tkn, ifkw->node, prsr->state);
 
 	free_all(opbrck);
 	free_all(clbrck);
@@ -727,7 +728,7 @@ void reduce_else(parser* prsr, symbol lhs)
 	insert_son(ifstmt, block->node, 2);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
-	push(&(prsr->stck), ifkw->tkn, ifstmt, prsr->state);
+	push(&(prsr->stck), ifkw->tkn, ifkw->node, prsr->state);
 
 	free_all(elskw);
 	free(block);
@@ -781,7 +782,7 @@ void reduce_assign_eq(parser* prsr, symbol lhs)
 	info* semcol = pop(&(prsr->stck)),
 		* expr = pop(&(prsr->stck)),
 		* eq = pop(&(prsr->stck)),
-		* param = pop(&(prsr));
+		* param = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 	AST node = init_ast(NULL, NODE_ASSIGNMENT, 2, param->node->line, param->node->col);
 	insert_son(node, param->node, 0);

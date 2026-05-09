@@ -1,4 +1,7 @@
 @echo off
+
+SET DIRECTORY=textexamples\
+
 if "%1"=="" (
     echo Usage: compile ^<source_file^>
     exit /b 1
@@ -6,7 +9,7 @@ if "%1"=="" (
 
 del /q output\*.*
 echo Compiling...
-Debug\CompileProj.exe %1
+Debug\CompileProj.exe %DIRECTORY%%1
 if errorlevel 1 (
     echo Compilation failed.
 	if exist output\semantic_error.txt (
@@ -40,4 +43,4 @@ if errorlevel 1 (
 
 echo Running...
 
-dosbox -c "mount c C:\Users\arenz\source\repos\OmegaChessBot\CompileProj" -c "c:" -c "echo off" -c "cls" -c "output\target.exe" -c "echo." -c "echo." -c "echo ALT+ENTER for fullscreen" -c "pause" -c "exit" 
+dosbox -c "mount c C:\Users\arenz\source\repos\OmegaChessBot\CompileProj" -c "c:" -c "echo off" -c "cls" -c "output\target.exe" -c "echo." -c "echo ALT+ENTER for fullscreen" -c "pause" -c "exit" 

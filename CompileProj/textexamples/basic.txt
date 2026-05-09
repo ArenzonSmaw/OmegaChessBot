@@ -1,0 +1,21 @@
+declare num:int;
+declare sum:int = 0;
+declare count:int = 0;
+
+print("enter nums (-1 to finish): ");
+num = scan(int);
+
+loop (num != -1)
+{
+	count++;
+	sum ++ num;
+	
+	print("enter another num: ");
+	num = scan(int);
+}
+if (count > 0)
+{
+	sum // count;
+}
+print("nums average: ");
+print(sum);

@@ -1,6 +1,0 @@
-TYPE ERROR: comparison between incompatible types, At: Line:3, Col:14.
-TYPE ERROR: incompatible return type, At: Line:5, Col:10.
-DECLARATION ERROR: undefined identifier 'b', At: Line:7, Col:14.
-DECLARATION ERROR: redeclaration of function 'func1', At: Line:10, Col:2.
-TYPE ERROR: arithmetic operands must be integer types, At: Line:14, Col:19.
-TYPE ERROR: expr inside 'print' must be of a printable type, At: Line:14, Col:10.

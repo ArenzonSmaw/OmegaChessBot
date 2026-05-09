@@ -14,4 +14,3 @@ loop (declare i:int = 0 -> size; i++;)
 	}
 	print('\');
 }
-	

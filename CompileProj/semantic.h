@@ -52,7 +52,8 @@ typedef struct scope_node {
 	symbol_link *table[TABLE_ROWS];
 	struct scope_node* parent;
 	int level;
-	int offset_next;
+	int param_offset_next;
+	int local_offset_next;
 } scope_node, *scope;
 
 typedef struct {
@@ -61,6 +62,7 @@ typedef struct {
 	type_kind current_return_type;
 	int loop_depth;
 	int in_function;
+	int locals_count;
 	error_list error;
 } semanticer;
 
@@ -71,6 +73,8 @@ void enter_symbol(scope, symbol_link*);
 symbol_link* get_symbol(scope, char* name);
 symbol_link* extract_symbol(scope, char* name);
 int symbol_exist(scope, char* name);
+
+int type_size(type_kind);
 
 
 scope init_scope(int level, scope parent);

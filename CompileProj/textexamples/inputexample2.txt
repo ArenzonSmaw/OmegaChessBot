@@ -3,7 +3,7 @@ declare func1:int (a:int, b:int)
     return ((3*a+5*b)%b)%10;
 }
 declare ch:char = '1';
-loop(declare i:int = 0 -> 5; i++2;)
+loop(declare i:int = 0 -> 10; i++3;)
 {
     print(ch);
 	print(": ");

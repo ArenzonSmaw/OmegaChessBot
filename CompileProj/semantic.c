@@ -89,6 +89,13 @@ int is_printable(type_kind type)
 	return IS_PRINTABLE[type];
 }
 
+int type_size(type_kind type)
+{
+	if (type == TYPE_FLOAT || type == TYPE_RATIONAL)
+		return 4;
+	return 2;
+}
+
 symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, AST initializer, int scope_level, int line, int col, int offset)
 {
 	symbol_link* sym = (symbol_link*)malloc(sizeof(symbol_link));
@@ -136,13 +143,14 @@ scope init_scope(int level, scope parent)
 	scp->level = level;
 	if (parent) {
 		scp->parent = parent;
-		scp->offset_next = parent->offset_next;
 	}
 	else
 	{
 		scp->parent = NULL;
-		scp->offset_next = 0;
 	}
+
+	scp->param_offset_next = 2;
+	scp->local_offset_next = 2;
 
 	for (i = 0; i < TABLE_ROWS; i++)
 		scp->table[i] = NULL;
@@ -224,8 +232,11 @@ void exit_scope(semanticer* smt)
 	scope temp = smt->current_scope;
 	smt->current_scope = temp->parent; 
 
-	if (smt->current_scope && temp->offset_next > smt->current_scope->offset_next)
-		smt->current_scope->offset_next = temp->offset_next;
+	if (smt->current_scope)
+	{
+		smt->current_scope->param_offset_next = temp->param_offset_next;
+		smt->current_scope->local_offset_next = temp->local_offset_next;
+	}
 
 	for (i = 0; i < TABLE_ROWS; i++) {
 		sym = temp->table[i];
@@ -317,14 +328,19 @@ void var_declare_handler(semanticer* smt, AST ast)
 	type_kind init_type;
 	AST decl = ast->children[0];
 	AST initializer = NULL;
+	int offset;
 
 	if (decl->kind == NODE_PARAMETER) {
 		declared_type = decl->children[0]->type;
 		name = decl->children[1]->name;
+		offset = smt->current_scope->param_offset_next;
+		smt->current_scope->param_offset_next += type_size(declared_type);
 	}
 	else {
 		name = decl->name;
 		declared_type = ast->type;
+		offset = smt->current_scope->local_offset_next;
+		smt->current_scope->local_offset_next += type_size(declared_type);
 	}
 
 	if (symbol_exist(smt->current_scope, name)) 
@@ -342,8 +358,9 @@ void var_declare_handler(semanticer* smt, AST ast)
 		}
 	}
 	symbol_link* sym = create_symbol(name, VARIABLE, declared_type, initializer, smt->current_scope->level,
-		ast->line, ast->col, smt->current_scope->offset_next);
+		ast->line, ast->col, offset);
 	enter_symbol(smt->current_scope, sym);
+
 
 	ast->type = declared_type;
 }
@@ -393,8 +410,9 @@ void parameter_handler(semanticer* smt, AST ast)
 		symbol_link* sym = create_symbol(name, PARAM, ptype, NULL,
 			smt->current_scope->level,
 			ast->line, ast->col,
-			smt->current_scope->offset_next++);
+			smt->current_scope->param_offset_next);
 		enter_symbol(smt->current_scope, sym);
+		smt->current_scope->param_offset_next += type_size(type_node->type);
 		ast->type = type_node->type;
 	}
 }
@@ -667,7 +685,7 @@ void check_args(semanticer* smt, AST arg_list, symbol_link* func)
 	for (i = 0; i < arg_count; i++) {
 		arg = arg_list->children[i];
 		analyze(smt, arg);
-		if (arg->kind == NODE_IDENT)
+		if (arg->kind == NODE_PARAMETER)
 		{
 			arg = arg->children[1];
 		}
@@ -793,6 +811,7 @@ semanticer* init_semanticer(AST ast, char* error_file)
 		smt->in_function = 0;
 		smt->loop_depth = 0;
 		smt->current_return_type = TYPE_VOID;
+		smt->locals_count = 0;
 	}
 	else
 		memory_error();

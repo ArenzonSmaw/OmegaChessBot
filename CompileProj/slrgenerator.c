@@ -181,32 +181,29 @@ int add_to_set(items_arr* arr, item_set set, int* arr_size, int* arr_count)
 	}
 	return 0;
 }
+static int closure_item_matches(item_set rule, item_set candidate)
+{
+	return rule.pos < rule.length
+		&& !rule.rhs[rule.pos].isTerminal
+		&& candidate.lhs.symbol == rule.rhs[rule.pos].symbol;
+}
+
+static int closure_expand_rule(items_arr* set, int* set_size, int* set_count, items_arr rules, int length, item_set rule)
+{
+	int changed = 0, index;
+	for (index = 0; index < length; index++)
+		if (closure_item_matches(rule, rules[index]))
+			changed |= add_to_set(set, rules[index], set_size, set_count);
+	return changed;
+}
+
 void closure(items_arr* set, int* set_size, int* set_count, items_arr rules, int length)
 {
-	/*
-		GETS: pointer to set of items, set size, count of elements in array, array of rule items, and rule items length
-		DOES: adds to the set of items all other items that can start with the same symbol as 
-																at least one of the existing items in the 
-		RETS: void
-	*/
-	int changed = 1;
-	int rule_num, index;
-	item_set rule;
-	while (changed)
-	{
+	int changed = 1, rule_num;
+	while (changed) {
 		changed = 0;
 		for (rule_num = 0; rule_num < *set_count; rule_num++)
-		{
-			rule = (*set)[rule_num];
-			if (rule.pos < rule.length && !rule.rhs[rule.pos].isTerminal)
-			{
-				for (index = 0; index < length; index++)
-				{
-					if (rules[index].lhs.symbol == rule.rhs[rule.pos].symbol)
-						changed = changed || add_to_set(set, rules[index], set_size, set_count);
-				}
-			}
-		}
+			changed |= closure_expand_rule(set, set_size, set_count, rules, length, (*set)[rule_num]);
 	}
 }
 
@@ -315,143 +312,149 @@ void build_states(items_arr arr, int arr_size)
 
 }
 
+static int first_add_terminal(symbol l, symbol r)
+{
+	if (FIRST[l - TERMINALS_COUNT - 1][r] == 0) {
+		FIRST[l - TERMINALS_COUNT - 1][r] = 1;
+		return 1;
+	}
+	return 0;
+}
+
+static int first_propagate(symbol l, symbol r)
+{
+	int changed = 0;
+	symbol temp;
+	for (temp = 0; temp < TERMINALS_COUNT; temp++)
+	{
+		if (FIRST[r - TERMINALS_COUNT - 1][temp] && !FIRST[l - TERMINALS_COUNT - 1][temp])
+		{
+			FIRST[l - TERMINALS_COUNT - 1][temp] = 1;
+			changed = 1;
+		}
+	}
+	return changed;
+}
+
+static int first_process_item(item_set item)
+{
+	symbol l = item.lhs.symbol;
+	symbol r = item.rhs[0].symbol;
+	if (r < TERMINALS_COUNT)
+		return first_add_terminal(l, r);
+	else if (r > TERMINALS_COUNT)
+		return first_propagate(l, r);
+	return 0;
+}
+
 void fill_first(items_arr rules, int count)
 {
-	/*
-		GETS: array of items and its size
-		DOES: calculates what terminal symbols start a rule and updates FIRST table accordingly
-		RETS: void
-	*/
-	int changed = 1;
-	int index;
-	item_set item;
-	symbol l, r, temp;
-	while (changed)
-	{
+	int changed = 1, index;
+	while (changed) {
 		changed = 0;
-
 		for (index = 0; index < count; index++)
-		{
-			item = rules[index];
-			l = item.lhs.symbol;
-			r = item.rhs[0].symbol;
-			if (r < TERMINALS_COUNT && FIRST[l-TERMINALS_COUNT-1][r] == 0)
-			{
-				FIRST[l-TERMINALS_COUNT-1][r] = 1;
-				changed = 1;
-			}
-			else if (r > TERMINALS_COUNT)
-			{
-				for (temp = 0; temp < TERMINALS_COUNT; temp++)
-				{
-					if (FIRST[r-TERMINALS_COUNT-1][temp] && !FIRST[l-TERMINALS_COUNT-1][temp])
-					{
-						FIRST[l-TERMINALS_COUNT-1][temp] = 1;
-						changed = 1;
-					}
-				}
-			}
-		}
+			changed |= first_process_item(rules[index]);
 	}
 }
 
 
+static int follow_add(symbol A, symbol t)
+{
+	if (FOLLOW[A - TERMINALS_COUNT - 1][t] == 0) {
+		FOLLOW[A - TERMINALS_COUNT - 1][t] = 1;
+		return 1;
+	}
+	return 0;
+}
+
+static int follow_from_terminal(symbol A, symbol t)
+{
+	return follow_add(A, t);
+}
+
+static int follow_from_first(symbol A, symbol B)
+{
+	int changed = 0, i;
+	for (i = 0; i < TERMINALS_COUNT; i++)
+		if (FIRST[B - TERMINALS_COUNT - 1][i])
+			changed |= follow_add(A, i);
+	return changed;
+}
+
+static int follow_from_lhs(symbol A, symbol lhs)
+{
+	int changed = 0, i;
+	for (i = 0; i < TERMINALS_COUNT; i++)
+		if (FOLLOW[lhs - TERMINALS_COUNT - 1][i])
+			changed |= follow_add(A, i);
+	return changed;
+}
+
+static int follow_process_dot(item_set rule, int dot)
+{
+	symbol A, B;
+	if (rule.rhs[dot].isTerminal)
+		return 0;
+
+	A = rule.rhs[dot].symbol;
+
+	if (dot + 1 >= rule.length)
+		return follow_from_lhs(A, rule.lhs.symbol);
+
+	if (rule.rhs[dot + 1].isTerminal)
+		return follow_from_terminal(A, rule.rhs[dot + 1].symbol);
+
+	B = rule.rhs[dot + 1].symbol;
+	return follow_from_first(A, B);
+}
+
+static int follow_process_rule(item_set rule)
+{
+	int changed = 0, dot;
+	for (dot = 0; dot < rule.length; dot++)
+		changed |= follow_process_dot(rule, dot);
+	return changed;
+}
+
 void fill_follow(items_arr rules, int count)
 {
-	/* 
-		GETS: array of items and its size
-		DOES: calculates which terminals follow rules(indicators to the ends of rule) and fills the FOLLOW table accordingly
-		RETS: void
-	*/
-	int changed = 1;
-	int dot, index, i;
-	item_set rule;
-	symbol A, B;
-	FOLLOW[S_TAG-TERMINALS_COUNT-1][END_TOKEN] = 1;
+	int changed = 1, index;
+	FOLLOW[S_TAG - TERMINALS_COUNT - 1][END_TOKEN] = 1;
 	while (changed) {
 		changed = 0;
 		for (index = 0; index < count; index++)
-		{
-			rule = rules[index];
-			for (dot = 0; dot < rule.length; dot++)
-			{
-				if (!rule.rhs[dot].isTerminal)
-				{
-					A = rule.rhs[dot].symbol;
-
-					if (dot + 1 < rule.length)
-					{
-						if (rule.rhs[dot + 1].isTerminal)
-						{
-							if (FOLLOW[A-TERMINALS_COUNT-1][rule.rhs[dot + 1].symbol] == 0)
-							{
-								FOLLOW[A-TERMINALS_COUNT-1][rule.rhs[dot + 1].symbol] = 1;
-								changed = 1;
-							}
-						}
-						else
-						{
-							B = rule.rhs[dot + 1].symbol;
-							for (i = 0; i < TERMINALS_COUNT; i++)
-							{
-								if (FIRST[B-TERMINALS_COUNT-1][i] && !FOLLOW[A-TERMINALS_COUNT-1][i])
-								{
-									FOLLOW[A-TERMINALS_COUNT-1][i] = 1;
-									changed = 1;
-								}
-							}
-						}
-					}
-					else
-					{
-						for (i = 0; i < TERMINALS_COUNT; i++)
-						{
-							if (FOLLOW[A-TERMINALS_COUNT-1][i] == 0 && FOLLOW[rule.lhs.symbol-TERMINALS_COUNT-1][i] == 1)
-							{
-								FOLLOW[A-TERMINALS_COUNT-1][i] = 1;
-								changed = 1;
-							}
-						}
-					}
-				}
-			}
-		}
+			changed |= follow_process_rule(rules[index]);
 	}
+}
+
+
+static void action_reduce(int state_num, item_set itm)
+{
+	symbol sym;
+	for (sym = 0; sym < TERMINALS_COUNT; sym++)
+		if (FOLLOW[itm.lhs.symbol - TERMINALS_COUNT - 1][sym])
+			gnrtr.ACTION[sym][state_num] = itm.rule_num;
+}
+
+static void action_shift(int state_num, item_set itm)
+{
+	if (itm.pos < itm.length && itm.rhs[itm.pos].isTerminal)
+		gnrtr.ACTION[itm.rhs[itm.pos].symbol][state_num] = SHIFT;
 }
 
 void fill_state_action(int state_num)
 {
-	/*
-		GETS: state number (index of state in states array)
-		DOES: assigns reduction rule for each terminal symbol that follows a rule in the state
-				assigns shift action for each terminal symbol that is placed after dot position of the rule
-		RETURNS: void
-	*/
 	state stt = states[state_num];
 	int item_idx;
-	symbol sym_idx;
 	item_set itm;
-
 	for (item_idx = 0; item_idx < stt.count; item_idx++)
 	{
 		itm = stt.items[item_idx];
 		if (itm.pos >= itm.length)
-		{
-			for (sym_idx = 0; sym_idx < TERMINALS_COUNT; sym_idx++)
-			{
-				if (FOLLOW[itm.lhs.symbol - TERMINALS_COUNT - 1][sym_idx])
-				{
-					gnrtr.ACTION[sym_idx][state_num] = itm.rule_num;
-				}
-			}
-		}
-		if (itm.pos < itm.length && itm.rhs[itm.pos].isTerminal)
-		{
-			gnrtr.ACTION[itm.rhs[itm.pos].symbol][state_num] = SHIFT;
-		}
+			action_reduce(state_num, itm);
+		action_shift(state_num, itm);
 	}
 }
-
 void fill_action(items_arr rules, int count)
 {
 	/*
