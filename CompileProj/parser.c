@@ -89,6 +89,7 @@ void fill_terminal_to_kind()
 	TERMINAL_TO_KIND[SCAN] = NODE_SCAN;
 	TERMINAL_TO_KIND[PRINT] = NODE_PRINT;
 
+	TERMINAL_TO_KIND[EQUALS] = NODE_LOG_EQUAL;
 	TERMINAL_TO_KIND[AND] = NODE_BIT_AND;
 	TERMINAL_TO_KIND[ANDAND] = NODE_LOG_AND;
 	TERMINAL_TO_KIND[OR] = NODE_BIT_OR;
@@ -118,6 +119,11 @@ void fill_terminal_to_kind()
 	TERMINAL_TO_KIND[DECLARE] = NODE_VAR_DECLARE;
 	TERMINAL_TO_KIND[IF] = NODE_IF;
 
+	TERMINAL_TO_KIND[USE] = NODE_USE_DECLARE;
+	TERMINAL_TO_KIND[RETURN] = NODE_RETURN;
+	TERMINAL_TO_KIND[BREAK] = NODE_BREAK;
+	TERMINAL_TO_KIND[PASS] = NODE_PASS;
+	TERMINAL_TO_KIND[LOOP] = NODE_LOOP;
 }
 
 void free_all(info* ptr)
@@ -587,9 +593,9 @@ void reduce_loop_while(parser* prsr, symbol lhs)
 		* factor = pop(&(prsr->stck)),
 		* loop = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
-	loop->node = init_ast(loop->tkn, NODE_LOOP, 2, loop->node->line, loop->node->col);
-	insert_son(loop->node, factor, 0);
-	insert_son(loop->node, block, 1);
+	alloc_children(loop->node, 2); 
+	insert_son(loop->node, factor->node, 0);
+	insert_son(loop->node, block->node, 1);
 
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), loop->tkn, loop->node, prsr->state);
@@ -737,7 +743,7 @@ void reduce_scan(parser* prsr, symbol lhs)
 		* scan = pop(&(prsr->stck));
 	int prev_state = top(&(prsr->stck))->state;
 
-	scan->node->type = type->node->type;
+	scan->node->type = lex_to_type(type->tkn->lexeme);
 	prsr->state = SLR_GOTO[lhs][prev_state];
 	push(&(prsr->stck), scan->tkn, scan->node, prsr->state);
 
@@ -824,9 +830,9 @@ void reduce_assign_inc_unary(parser* prsr, symbol lhs)
 	AST incr = init_ast(NULL, kind, 2, oprt->node->line, oprt->node->col);
 	token* one = (token*)malloc(sizeof(token));
 	if (kind == NODE_ADD || kind == NODE_SUB)
-		*one = (token){ "1", 1, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
+		*one = (token){ "1", 1, 1, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
 	else
-		*one = (token){ "2", 2, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
+		*one = (token){ "2", 2, 1, INT_LITERAL, oprt->tkn->line, oprt->tkn->col };
 	insert_son(incr, id->node, 0);
 	insert_son(incr, create_leaf(one, NODE_LITERAL), 1);
 	insert_son(node, id->node, 0);

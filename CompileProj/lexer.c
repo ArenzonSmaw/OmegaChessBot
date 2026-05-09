@@ -9,9 +9,9 @@ typedef enum STATES {
 	ST_STRINGSTART,
 	ST_CHARSTART,
 	ST_CHARVALUE,
-	ST_BACKSLASH,
 	ST_FLOATINGNUMBER,
 	ST_RATIONALNUMBER,
+	ST_DIG_DIV,
 	ST_DOT,
 	ST_DIV,
 	ST_PLUS,
@@ -233,7 +233,7 @@ void end_integer(lexer* lxr)
 {
 	//finishes handling current token and parsing lexeme into numeral (double) value
 	token* temp = &(lxr->data[lxr->count]);
-	temp->value = strtod(temp->lexeme, NULL);
+	temp->value1 = (int)strtol(temp->lexeme, NULL, 10);
 	lxr->count++;
 }
 void conv_float(lexer* lxr)
@@ -249,14 +249,16 @@ void end_float(lexer* lxr)
 {
 	//finishes handling float token
 	token* tkn = &(lxr->data[lxr->count]);
-	tkn->value = strtod(tkn->lexeme, NULL);
+	double value = strtod(tkn->lexeme, NULL);
+	tkn->value1 = (int)value;
+	tkn->value2 = (int)((value - tkn->value1) * 100);
 	lxr->count++;
 }
 void conv_rational(lexer* lxr) //TODO 
 {
 	//converts existing token into rational type assuming
 	token* tkn;
-	lxr->count -= 1;
+	lxr->count -= 2;
 	tkn = &(lxr->data[lxr->count]);
 	strcat(tkn->lexeme, (char[2]) { '/', '\0' });
 	add_char(lxr);
@@ -265,13 +267,14 @@ void conv_rational(lexer* lxr) //TODO
 void end_rational(lexer* lxr)
 {
 	//finishes handling of rational type token - calculates the derivitive
-	double dvnd, dvsr; //dividend, divisor
+	int nmtr, dnmr; //numerator, denominator
 	char* end_ptr;
 
-	dvnd = strtod(lxr->data[lxr->count].lexeme, &end_ptr);
-	dvsr = strtod(end_ptr + 1, NULL);
+	nmtr = strtol(lxr->data[lxr->count].lexeme, &end_ptr, 10);
+	dnmr = strtol(end_ptr + 1, NULL, 10);
 
-	lxr->data[lxr->count].value = dvnd / dvsr;
+	lxr->data[lxr->count].value1 = nmtr;
+	lxr->data[lxr->count].value2 = dnmr;
 	lxr->count++;
 }
 
@@ -280,7 +283,7 @@ void conv_bool(lexer* lxr)
 	//converts existing token into bool type;
 	add_char(lxr);
 	lxr->data[lxr->count].type = BOOL_LITERAL;
-	lxr->data[lxr->count].value = strcmp(lxr->data[lxr->count].lexeme, "false");
+	lxr->data[lxr->count].value1 = strcmp(lxr->data[lxr->count].lexeme, "false");
 }
 void start_char(lexer* lxr)
 {
@@ -322,12 +325,12 @@ void ignore(lexer* lxr)
 	//ignores current character
 	lxr->index++;
 }
-void end_token(lexer* lxr)
+
+
+static void(*end_method[(symbol)TERMINALS_COUNT])(lexer*);
+void init_end_method()
 {
-	//ends token with checking for ending method
 	symbol tkn_type;
-	static void (*method)(lexer*);
-	static void(*end_method[(symbol)TERMINALS_COUNT])(lexer*);
 	for (tkn_type = ID; tkn_type < TERMINALS_COUNT; tkn_type++)
 	{
 		end_method[tkn_type] = ignore;
@@ -337,7 +340,14 @@ void end_token(lexer* lxr)
 	end_method[FLOAT_LITERAL] = end_float;
 	end_method[CHR_LITERAL] = expected_error;
 	end_method[STR_LITERAL] = expected_error;
+}
 
+void end_token(lexer* lxr)
+{
+	//ends token with checking for ending method
+	symbol tkn_type;
+	static void (*method)(lexer*);
+	
 	tkn_type = lxr->data[lxr->count].type;
 	method = end_method[tkn_type];
 	if (method == ignore)
@@ -676,30 +686,6 @@ void init_char_class_table()
 	//backslash
 	CHAR_CLASS['\\'] = CH_BACKSLASH;
 }
-void init_basic_cases()
-{
-	//initiates the tables for general state cases
-	int st, ch;
-
-	for (st = ST_INTEGER; st <= ST_ERROR; st++)
-	{
-		SET(st, CH_WHITESPACE, ST_START, end_token);
-		SET(st, CH_NEWLINE, ST_START, end_token);
-		for (ch = CH_COMMA; ch <= CH_SEMICOLON; ch++)
-			SET(st, ch, ST_START, add_controlflow);
-		for (ch = CH_HASHTAG; ch <= CH_DOT; ch++)
-			ACTION[st][ch] = end_token_start_operator;
-
-		SET(st, CH_UNKNOWN, ST_ERROR, unknown_character);
-	}
-	for (st = ST_IDENTIFIER; st <= ST_VOID; st++)
-	{
-		for (ch = CH_DIGIT; ch <= CH_PRINTABLE; ch++)
-		{
-			SET(st, ch, ST_IDENTIFIER, conv_ident);
-		}
-	}
-}
 void init_default_states()
 {
 	//initiates starting state and char and string states
@@ -725,17 +711,20 @@ void init_default_states()
 	for (ch = CH_LETTER; ch <= CH_PRINTABLE; ch++)
 	{
 		SET(ST_START, ch, ST_IDENTIFIER, start_token);
+	}
+	for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
+	{
 		SET(ST_CHARSTART, ch, ST_CHARVALUE, add_char);
 		SET(ST_CHARVALUE, ch, ST_ERROR, illegal_character);
-		SET(ST_BACKSLASH, ch, ST_CHARVALUE, add_char);
 		SET(ST_STRINGSTART, ch, ST_STRINGSTART, add_char);
 	}
-	SET(ST_CHARSTART, CH_DIGIT, ST_CHARVALUE, add_char);
-	SET(ST_CHARSTART, CH_WHITESPACE, ST_CHARVALUE, add_char);
-	SET(ST_STRINGSTART, CH_DIGIT, ST_STRINGSTART, add_char);
-	SET(ST_STRINGSTART, CH_WHITESPACE, ST_STRINGSTART, add_char);
 	SET(ST_STRINGSTART, CH_DQUOTE, ST_START, end_string);
 	SET(ST_CHARVALUE, CH_SQUOTE, ST_START, end_char);
+	SET(ST_STRINGSTART, CH_NEWLINE, ST_ERROR, expected_error);
+	SET(ST_CHARSTART, CH_NEWLINE, ST_ERROR, expected_error);
+	SET(ST_STRINGSTART, CH_UNKNOWN, ST_ERROR, unknown_character);
+	SET(ST_CHARSTART, CH_UNKNOWN, ST_ERROR, unknown_character);
+
 
 	for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
 		SET(ST_ERROR, ch, ST_ERROR, ignore);
@@ -751,6 +740,30 @@ void init_default_states()
 	}
 	SET(ST_ERROR, CH_SQUOTE, ST_START, start_controlflow);
 	SET(ST_ERROR, CH_DQUOTE, ST_START, start_controlflow);
+}
+void init_basic_cases()
+{
+	//initiates the tables for general state cases
+	int st, ch;
+
+	for (st = ST_INTEGER; st <= ST_ERROR; st++)
+	{
+		SET(st, CH_WHITESPACE, ST_START, end_token);
+		SET(st, CH_NEWLINE, ST_START, end_token);
+		for (ch = CH_COMMA; ch <= CH_SEMICOLON; ch++)
+			SET(st, ch, ST_START, add_controlflow);
+		for (ch = CH_HASHTAG; ch <= CH_DOT; ch++)
+			ACTION[st][ch] = end_token_start_operator;
+
+		SET(st, CH_UNKNOWN, ST_ERROR, unknown_character);
+	}
+	for (st = ST_IDENTIFIER; st <= ST_VOID; st++)
+	{
+		for (ch = CH_DIGIT; ch <= CH_PRINTABLE; ch++)
+		{
+			SET(st, ch, ST_IDENTIFIER, conv_ident);
+		}
+	}
 }
 
 void init_operator_states()
@@ -776,12 +789,17 @@ void init_operator_states()
 		GOTO[st][CH_COLON] = ST_START;// is not a part of a multi character operator
 		GOTO[st][CH_HASHTAG] = ST_COMMENT1;
 	}
-	for (st = ST_DOT; st <= ST_MINUS; st++)
+	for (st = ST_DIG_DIV; st <= ST_MINUS; st++)
 	{
 		for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
 		{
 			SET(st, ch, GOTO[ST_START][ch], ACTION[ST_START][ch]);
 		}
+	}
+	for (ch = CH_HASHTAG; ch <= CH_DOT; ch++)
+	{
+		GOTO[ST_STRINGSTART][ch] = ST_STRINGSTART;
+		GOTO[ST_CHARSTART][ch] = ST_CHARVALUE;
 	}
 	
 	SET(ST_PLUS, CH_PLUS, ST_START, conv_dblplus);
@@ -789,6 +807,7 @@ void init_operator_states()
 	SET(ST_MINUS, CH_RIGHT, ST_START, conv_arrow);
 	SET(ST_MULT, CH_MULT, ST_START, conv_dblmult);
 	SET(ST_DIV, CH_DIVIDE, ST_START, conv_dbldivide);
+	SET(ST_DIG_DIV, CH_DIVIDE, ST_START, conv_dbldivide);
 	SET(ST_MOD, CH_MOD, ST_START, conv_dblmod);
 	SET(ST_AND, CH_AND, ST_START, conv_andand);
 	SET(ST_OR, CH_OR, ST_START, conv_oror);
@@ -809,15 +828,16 @@ void init_numeric_states()
 	SET(ST_INTEGER, CH_DIGIT, ST_INTEGER, add_char);
 	SET(ST_INTEGER, CH_WHITESPACE, ST_START, end_integer);
 	
-	for (ch = CH_HASHTAG; ch <= MINUS; ch++)
+	for (ch = CH_HASHTAG; ch < CH_MINUS; ch++)
 	{
 		SET(ST_INTEGER, ch, ST_START, end_token_start_operator);
 	}
-	SET(ST_INTEGER, CH_DIVIDE, ST_DIV, end_token_start_operator);
+	SET(ST_INTEGER, CH_MINUS, ST_MINUS, end_token_start_operator);
+	SET(ST_INTEGER, CH_DIVIDE, ST_DIG_DIV, end_token_start_operator);
 	SET(ST_INTEGER, CH_DOT, ST_DOT, end_token_start_operator);
 
 	SET(ST_DOT, CH_DIGIT, ST_FLOATINGNUMBER, conv_float);
-	SET(ST_DIV, CH_DIGIT, ST_RATIONALNUMBER, conv_rational);
+	SET(ST_DIG_DIV, CH_DIGIT, ST_RATIONALNUMBER, conv_rational);
 
 	SET(ST_FLOATINGNUMBER, CH_DIGIT, ST_FLOATINGNUMBER, add_char);
 	SET(ST_FLOATINGNUMBER, CH_WHITESPACE, ST_START, end_float);
@@ -1007,6 +1027,7 @@ void tokenize(lexer *lxr)
 
 
 	init_tables();
+	init_end_method();
 
 
 	while (input[index] != '\0' && input[index] <= 127)
@@ -1032,5 +1053,5 @@ void tokenize(lexer *lxr)
 		lxr->data = (token*)realloc(lxr->data, (lxr->count+1) * sizeof(token));
 		if (lxr->data == NULL) memory_error();
 	}
-	lxr->data[lxr->count++] = (token){ "END_OF_FILE", 0, END_TOKEN, lxr->line, lxr->col };
+	lxr->data[lxr->count++] = (token){ "END_OF_FILE", 0, 0, END_TOKEN, lxr->line, lxr->col };
 }

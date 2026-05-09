@@ -6,7 +6,7 @@ void fill_tkn_to_type()
 	int i = 0;
 	for (i = 0; i < SYMBOLS_COUNT; i++)
 		TKN_TO_TYPE[i] = TYPE_VOID;
-	TKN_TO_TYPE[INT_LITERAL] = TYPE_INT;
+	TKN_TO_TYPE[INT_LITERAL] = TYPE_NATURAL;
 	TKN_TO_TYPE[FLOAT_LITERAL] = TYPE_FLOAT;
 	TKN_TO_TYPE[RAT_LITERAL] = TYPE_RATIONAL;
 	TKN_TO_TYPE[CHR_LITERAL] = TYPE_CHAR;
@@ -43,8 +43,7 @@ AST create_leaf(token* tkn, node_kind kind)
 {
 	AST ast = (AST)malloc(sizeof(syntax_node));
 	data_type dattype;
-	if (KIND_TO_DATA[0] == 0)
-		fill_kind_to_data();
+
 	dattype = KIND_TO_DATA[kind];
 	if (!ast) memory_error();
 	ast->children = NULL;
@@ -60,10 +59,13 @@ AST create_leaf(token* tkn, node_kind kind)
 		ast->dattype = dattype;
 
 		if (dattype == NUM)
-			ast->data.value = tkn->value;
+		{
+			ast->value1 = tkn->value1;
+			ast->value2 = tkn->value2;
+		}
 
 		else if (dattype == NAME)
-			ast->data.name = tkn->lexeme;
+			ast->name = tkn->lexeme;
 	}
 
 	return ast;

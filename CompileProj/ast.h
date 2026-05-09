@@ -95,10 +95,9 @@ typedef struct ast_node
 	node_kind kind;
 	type_kind type;
 	data_type dattype;
-	union {
-		char* name;
-		double value;
-	} data;
+	char* name;
+	int value1, value2;
+
 	int line, col;
 
 	struct ast_node** children;

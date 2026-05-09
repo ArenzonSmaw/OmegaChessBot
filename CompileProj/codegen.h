@@ -5,12 +5,14 @@
 #include "semantic.h"
 #include <stdio.h>
 
-typedef struct {
+typedef struct context {
     FILE* out;
     scope current_scope;
     int temp_count;
     int label_count;  
-    char* break_label;
+    char break_label[32];
+    char step_label[32];
+
 } context;
 
 

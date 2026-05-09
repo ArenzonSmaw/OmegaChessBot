@@ -241,9 +241,9 @@ void postorder(AST ast)
     }
 }
 
-int main(/*int argc, char* argv[]*/) {
+int main(int argc, char* argv[]) {
 
-    char* inp_file = "textexamples/inputexample1.txt";
+    char* inp_file = argv[1];
     char* out_file = "output/target.asm";
 	lexer* lxr = NULL;
     parser* prsr = NULL;
@@ -266,8 +266,7 @@ int main(/*int argc, char* argv[]*/) {
     if (successful)
     {
         call_generate(ctx, smt, out_file);
+        return 0;
     }
-
-
-	return 0;
+	return 1;
 }

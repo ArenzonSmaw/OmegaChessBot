@@ -1,11 +1,12 @@
 declare func1:int (a:int, b:int)
 {
-    return ((3*a+5*b)%b)%2;
+    return ((3*a+5*b)%b)%10;
 }
 declare ch:char = '1';
 loop(declare i:int = 0 -> 5; i++2;)
 {
     print(ch);
+	print(": ");
     print(func1(i+1,i+2));
     ch++;
 }

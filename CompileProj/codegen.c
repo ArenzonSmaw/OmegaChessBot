@@ -7,6 +7,8 @@
 #define MAX_STRINGS 128
 #define MAX_STR_RET_BUFFS 64
 
+FILE* func_buff;
+
 typedef void (*gen_func)(context*, AST);
 gen_func GENERATOR[KIND_COUNT];
 char* global_frmts[TYPE_ERROR] = {
@@ -15,7 +17,7 @@ char* global_frmts[TYPE_ERROR] = {
     "_%s dw 0\n",    //TYPE_NATURAL
     "_%s dw 0\n_%s_hi dw 0\n",   //TYPE_RATIONAL
     "_%s dw 0\n",    //TYPE_BOOL
-    "_%s db 0\n",    //TYPE_CHAR
+    "_%s dw 0\n",    //TYPE_CHAR
     "_%s db 255 dup(0), '$'\n",  //TYPE_STRING
     "_%s dw 0\n",    //TYPE_VOID
     "_%s dw 0\n",    //TYPE_POINTER
@@ -28,7 +30,6 @@ int strings_count = 0;
 char* str_ret_buffs[MAX_STR_RET_BUFFS];
 int str_retbuff_count = 0;
 
-int underline_emitted = 0; //1 if _ was declared as a global var
 
 context* init_context(FILE* out, scope global)
 {
@@ -39,7 +40,9 @@ context* init_context(FILE* out, scope global)
         ctx->current_scope = global;
         ctx->label_count = 0;
         ctx->temp_count = 0;
-        ctx->break_label = NULL;
+
+        strcpy(ctx->break_label, "\0");
+        strcpy(ctx->step_label, "\0");
     }
     else
         memory_error();
@@ -109,6 +112,23 @@ void exit_ctx_scope(context* ctx)
     free(temp);
 }
 
+int type_size(type_kind type)
+{
+    if (type == TYPE_FLOAT || type == TYPE_RATIONAL)
+        return 4;
+    return 2;
+}
+
+
+void emit_func_buffer(context* ctx)
+{
+    int ch;
+    func_buff = fopen("output/funcbuff.txt", "r");
+
+    while ((ch = fgetc(func_buff)) != EOF) {
+        fputc(ch, ctx->out);
+    }
+}
 
 void emit_line(context* ctx, const char* frmt, ...)
 {
@@ -125,6 +145,24 @@ void emit_string(context* ctx, const char* frmt, ...)
     va_start(vals, frmt);
     vfprintf(ctx->out, frmt, vals);
     va_end(vals);
+}
+
+void emit_string_literal(context* ctx, int i, char* str)
+{
+    emit_string(ctx, "_str_%d db ", i);
+    while (str[0] != '\0')
+    {
+        if (str[0] == '\\')
+        {
+            emit_string(ctx, "\", 0Ah, \"");
+        }
+        else
+        {
+            emit_string(ctx, "%c", str[0]);
+        }
+        str++;
+    }
+    emit_string(ctx, ", '$'\n");
 }
 
 void emit_addr_of(context* ctx, symbol_link* sym)
@@ -144,6 +182,14 @@ void emit_load(context* ctx, symbol_link* sym)
             emit_line(ctx, "mov ax, [_%s]", sym->name);
         if (sym->type == TYPE_RATIONAL || sym->type == TYPE_FLOAT)
             emit_line(ctx, "mov bx, [_%s_hi]", sym->name);
+    }
+    else if (sym->is_param) {
+        if (sym->type == TYPE_STRING)
+            emit_line(ctx, "lea ax, [bp + %d]", sym->offset);
+        else
+            emit_line(ctx, "mov ax, [bp + %d]", sym->offset);
+        if (sym->type == TYPE_RATIONAL || sym->type == TYPE_FLOAT)
+            emit_line(ctx, "mov bx, [bp + %d]", sym->offset + 2);
     }
     else {
         if (sym->type == TYPE_STRING)
@@ -184,86 +230,117 @@ void emit_global_var(context* ctx, symbol_link* sym)
 
 void emit_print_int_proc(context* ctx)
 {
-    emit_line(ctx, "print_int proc");
-    emit_line(ctx, "\tcmp ax, 0");
-    emit_line(ctx, "\tjge pi_positive");
-    emit_line(ctx, "\tpush ax");
-    emit_line(ctx, "\tmov dl, '-'");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tpop ax");
-    emit_line(ctx, "\tneg ax");
-    emit_line(ctx, "pi_positive:");
-    emit_line(ctx, "\tmov cx, 0");
-    emit_line(ctx, "\tmov bx, 10");
-    emit_line(ctx, "pi_divide_loop:");
-    emit_line(ctx, "\tmov dx, 0");
-    emit_line(ctx, "\tdiv bx");
-    emit_line(ctx, "\tpush dx");
-    emit_line(ctx, "\tinc cx");
-    emit_line(ctx, "\tcmp ax, 0");
-    emit_line(ctx, "\tjne pi_divide_loop");
-    emit_line(ctx, "pi_print_loop:");
-    emit_line(ctx, "\tpop dx");
-    emit_line(ctx, "\tadd dl, '0'");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tloop pi_print_loop");
-    emit_line(ctx, "\tret");
-    emit_line(ctx, "print_int endp\n");
+    emit_string(ctx, "print_int proc\n");
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "jge pi_positive");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "mov dl, '-'");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "neg ax");
+    emit_string(ctx, "pi_positive:\n");
+    emit_line(ctx, "mov cx, 0");
+    emit_line(ctx, "mov bx, 10");
+    emit_string(ctx, "pi_divide_loop:\n");
+    emit_line(ctx, "mov dx, 0");
+    emit_line(ctx, "div bx");
+    emit_line(ctx, "push dx");
+    emit_line(ctx, "inc cx");
+    emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "jne pi_divide_loop");
+    emit_string(ctx, "pi_print_loop:\n");
+    emit_line(ctx, "pop dx");
+    emit_line(ctx, "add dl, '0'");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "loop pi_print_loop");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_int endp\n\n");
 }
 
 void emit_print_char_proc(context* ctx)
 {
-    emit_line(ctx, "print_char proc");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tret");
-    emit_line(ctx, "print_char endp\n");
+    emit_string(ctx, "print_char proc\n");
+    emit_line(ctx, "cmp al, '\\'");
+    emit_line(ctx, "jne _print_char");
+    emit_line(ctx, "mov dl, 0Ah");
+    emit_string(ctx, "_print_char:\n");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_char endp\n\n");
 }
 
 void emit_print_string_proc(context* ctx)
 {
-    emit_line(ctx, "print_string proc");
-    emit_line(ctx, "\tmov ah, 09h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tret");
-    emit_line(ctx, "print_string endp\n");
+    emit_string(ctx, "print_string proc\n");
+    emit_line(ctx, "mov ah, 09h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_string endp\n\n");
 }
 
 void emit_print_rational_proc(context* ctx)
 {
-    emit_line(ctx, "print_rational proc");
-    emit_line(ctx, "\tpush bx");
-    emit_line(ctx, "\tcall print_int");
-    emit_line(ctx, "\tpop bx");
-    emit_line(ctx, "\tpush bx");
-    emit_line(ctx, "\tmov dl, '/'");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tpop ax");
-    emit_line(ctx, "\tcall print_int");
-    emit_line(ctx, "\tret");
-    emit_line(ctx, "print_rational endp\n");
+    emit_string(ctx, "print_rational proc\n");
+    emit_line(ctx, "push bx");
+    emit_line(ctx, "call print_int");
+    emit_line(ctx, "pop bx");
+    emit_line(ctx, "push bx");
+    emit_line(ctx, "mov dl, '/'");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "call print_int");
+    emit_line(ctx, "mov dl, 0Ah");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_rational endp\n\n");
 }
 
 void emit_print_float_proc(context* ctx)
 {
-    emit_line(ctx, "print_float proc");
-    emit_line(ctx, "\tcall print_int");
-    emit_line(ctx, "\tmov dl, '.'");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "\tmov ax, bx");
-    emit_line(ctx, "\tcmp ax, 10");
-    emit_line(ctx, "\tjge pf_print_frac");
-    emit_line(ctx, "\tmov dl, '0'");
-    emit_line(ctx, "\tmov ah, 02h");
-    emit_line(ctx, "\tint 21h");
-    emit_line(ctx, "pf_print_frac:");
-    emit_line(ctx, "\tcall print_int");
-    emit_line(ctx, "\tret");
-    emit_line(ctx, "print_float endp\n");
+    emit_string(ctx, "print_float proc\n");
+    emit_line(ctx, "push bx");
+    emit_line(ctx, "call print_int");
+    emit_line(ctx, "pop bx");
+    emit_line(ctx, "mov dl, '.'");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "cmp ax, 10");
+    emit_line(ctx, "jge pf_print_frac");
+    emit_line(ctx, "mov dl, '0'");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_string(ctx, "pf_print_frac:\n");
+    emit_line(ctx, "call print_int");
+    emit_line(ctx, "mov dl, 0Ah");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_float endp\n\n");
+}
+
+void emit_print_bool_proc(context* ctx)
+{
+    emit_string(ctx, "print_bool proc\n");
+    emit_line(ctx, "cmp al, 0");
+    emit_line(ctx, "je print_bool_false");
+    emit_line(ctx, "lea dx, true");
+    emit_line(ctx, "jmp _print_bool");
+    emit_string(ctx, "print_bool_false:\n");
+    emit_line(ctx, "lea dx, false");
+    emit_string(ctx, "_print_bool:\n");
+    emit_line(ctx, "mov ah, 09h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "mov dl, 0Ah");
+    emit_line(ctx, "mov ah, 02h");
+    emit_line(ctx, "int 21h");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "print_bool endp\n\n");
 }
 
 void emit_scan_int_proc(context* ctx)
@@ -288,6 +365,7 @@ void emit_scan_int_proc(context* ctx)
 
     emit_string(ctx, "_scan_int_done:\n");
     emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "ret");
     emit_string(ctx, "scan_int ENDP\n\n");
 
 }
@@ -423,6 +501,7 @@ void emit_procedures(context* ctx)
     emit_print_string_proc(ctx);
     emit_print_rational_proc(ctx);
     emit_print_float_proc(ctx);
+    emit_print_bool_proc(ctx);
 
     emit_scan_int_proc(ctx);
     emit_scan_float_proc(ctx);
@@ -531,13 +610,22 @@ void gen_var_declare(context* ctx, AST node)
     else
         id = param;
 
-    symbol_link* sym = get_symbol(ctx->current_scope, id->data.name);
+    symbol_link* sym = get_symbol(ctx->current_scope, id->name);
 
-    if (sym->is_global)
+    if (sym && sym->is_global)
     {
         emit_string(ctx, "\n.DATA\n");
         emit_global_var(ctx, sym);
         emit_string(ctx, ".CODE\n");
+    }
+    else
+    {
+        enter_symbol(ctx->current_scope, 
+            create_symbol(id->name, VARIABLE, param->children[0]->type,
+                NULL , ctx->current_scope->level, id->line, id->col, 
+                ctx->current_scope->offset_next));
+        sym = get_symbol(ctx->current_scope, id->name);
+        ctx->current_scope->offset_next += type_size(sym->type);
     }
     if (node->children_count == 2 && node->children[1])
     {
@@ -552,26 +640,35 @@ void re_enter_params(context* ctx, AST prm_lst)
     symbol_link* psym;
     char* pname;
     int i;
+
     for (i = 0; i < prm_lst->children_count; i++) {
         param = prm_lst->children[i];
-        pname = param->children[0]->data.name;
+        pname = param->children[1]->name;
         psym = extract_symbol(ctx->current_scope, pname);
         if (!psym)
         {
-            psym = create_symbol(pname, PARAM, param->children[1]->type, ctx->current_scope->level, param->line, param->col, 0);
+            psym = create_symbol(pname, PARAM, param->children[0]->type, NULL, 
+                ctx->current_scope->level, param->line, param->col, 
+                ctx->current_scope->offset_next);
+            ctx->current_scope->offset_next += type_size(psym->type);
+            psym->is_param = 1;
         }
         enter_symbol(ctx->current_scope, psym);
     }
 }
 void gen_func_declare(context* ctx, AST node)
 {
+    FILE* holder = ctx->out;
+
     AST name_param = node->children[0];
     AST param_list = node->children[1];
     AST body = node->children[2];
     
-    char* fname = name_param->children[1]->data.name;   /* id child */
+    char* fname = name_param->children[1]->name;   /* id child */
     type_kind rettype = name_param->children[0]->type;
     
+    ctx->out = func_buff;
+
     if (rettype == TYPE_STRING)
         reg_str_ret_buff(fname);
 
@@ -590,7 +687,8 @@ void gen_func_declare(context* ctx, AST node)
 
     enter_ctx_scope(ctx);
 
-    re_enter_params(ctx, param_list);
+    if (param_list)
+        re_enter_params(ctx, param_list);
 
     int local_size = ctx->current_scope->offset_next;
     if (local_size > 0)
@@ -609,11 +707,13 @@ void gen_func_declare(context* ctx, AST node)
     emit_line(ctx, "pop bp");
     emit_line(ctx, "ret");
     emit_string(ctx, "%s ENDP\n", fname);
+
+    ctx->out = holder;
 }
 
 void gen_assignment(context* ctx, AST node)
 {
-    char* name = node->children[0]->data.name;
+    char* name = node->children[0]->name;
     symbol_link* sym = lookup(ctx, name);
 
     gen_expr(ctx, node->children[1]);
@@ -644,29 +744,18 @@ void gen_assignment(context* ctx, AST node)
 void gen_return(context* ctx, AST node)
 {
     gen_expr(ctx, node->children[0]);  
-
-    emit_line(ctx, "pop di");
-    emit_line(ctx, "pop si");
-    emit_line(ctx, "pop dx");
-    emit_line(ctx, "pop cx");
-    emit_line(ctx, "pop bx");
-    emit_line(ctx, "mov sp, bp");
-    emit_line(ctx, "pop bp");
-    emit_line(ctx, "ret");
-
 }
 
 void gen_break(context* ctx, AST node)
 {
-    (void)node;
-    if (ctx->break_label)
+    if (strcmp(ctx->break_label, "\0"))
         emit_line(ctx, "jmp %s", ctx->break_label);
 }
 
 void gen_pass(context* ctx, AST node)
 {
-    (void)node;
-    emit_line(ctx, "nop");
+    if (strcmp(ctx->step_label, "\0"))
+        emit_line(ctx, "jmp %s", ctx->step_label);
 }
 
 void gen_if(context* ctx, AST node)
@@ -693,54 +782,58 @@ void gen_if(context* ctx, AST node)
 void gen_loop(context* ctx, AST node)
 {
     /* while-style:  children[0]=condition  children[1]=body
-       for-style:    children[0]=iterator   children[1]=step  children[2]=body */
+       for-style:    children[0]=iterator   children[1]=limit  children[2]=step children[3] = body */
     int l_start = new_label(ctx);
     int l_end = new_label(ctx);
-    char* prev_break = ctx->break_label;
-
+    char prev_break[32];
+    char prev_step[32];
+    strcpy(prev_break, ctx->break_label);
+    strcpy(prev_step, ctx->step_label);
     sprintf(ctx->break_label, "_lbl_%d", l_end);
+    sprintf(ctx->step_label, "_step_%d", l_start); // was l_end, should be l_start
 
-    if (node->children_count == 2 &&
-        node->children[1]->kind == NODE_BLOCK) {
-        //CHANGE: a while loop not a set rep loop
-        int top_lbl = new_label(ctx);
-        gen_expr(ctx, node->children[0]);   /* count -> AX */
-        emit_line(ctx, "mov cx, ax");
-        emit_line(ctx, "cmp cx, 0");
-        emit_line(ctx, "je _lbl_%d", l_end);
-        emit_string(ctx, "_lbl_%d:\n", top_lbl);
-        gen_node(ctx, node->children[1]);
-        emit_line(ctx, "loop _lbl_%d", top_lbl);
+    enter_ctx_scope(ctx);
+
+    if (node->children_count == 2)
+    {
+        // while-style: condition re-evaluated every iteration
+        emit_string(ctx, "_lbl_%d:\n", l_start);
+        gen_expr(ctx, node->children[0]);   /* condition -> AX */
+        emit_line(ctx, "cmp ax, 0");
+        emit_line(ctx, "jne _skip_%d", l_start);
+        emit_line(ctx, "jmp near ptr %s", ctx->break_label);
+        emit_string(ctx, "_skip_%d:\n", l_start);
+        gen_node(ctx, node->children[1]);   /* body */
+        emit_line(ctx, "jmp _lbl_%d", l_start);
     }
-    else {
-
-        int top_lbl = new_label(ctx);
-        int cont_lbl = new_label(ctx);
+    else
+    {
+        // for-style: init, condition check, body, step, repeat
 
         gen_var_declare(ctx, node->children[0]);    /* init var */
-        char* vname = node->children[0]->children[0]->data.name;
+        char* vname = node->children[0]->children[0]->children[1]->name;
         symbol_link* sym = lookup(ctx, vname);
-
-        emit_string(ctx, "_lbl_%d:\n", top_lbl);
-        /* condition: var <= limit */
+        emit_string(ctx, "_lbl_%d:\n", l_start);
+        emit_load(ctx, sym);                        /* AX = var */
+        emit_line(ctx, "push ax");                  /* save var */
         gen_expr(ctx, node->children[1]);           /* limit -> AX */
-        emit_load(ctx, sym);                        /* var   -> AX (overwrites) */
-        /* We need both; save limit first */
-        emit_line(ctx, "push ax");                  /* push var */
-        gen_expr(ctx, node->children[1]);           /* limit -> AX */
-        emit_line(ctx, "pop bx");                   /* BX = var  */
-        emit_line(ctx, "cmp bx, ax");
-        emit_line(ctx, "jg _lbl_%d", l_end);   /* var > limit -> done */
+        emit_line(ctx, "mov bx, ax");               /* BX = limit */
+        emit_line(ctx, "pop ax");                   /* AX = var */
+        emit_line(ctx, "cmp ax, bx");
+        emit_line(ctx, "jl _skip_%d", l_start);
+        emit_line(ctx, "jmp near ptr %s", ctx->break_label);      /* var > limit -> done */
+        emit_string(ctx, "_skip_%d:\n", l_start);
 
         gen_node(ctx, node->children[3]);           /* body */
 
-        emit_string(ctx, "_lbl_%d:\n", cont_lbl);
+        emit_string(ctx, "%s:\n", ctx->step_label);
         gen_node(ctx, node->children[2]);           /* step */
-        emit_line(ctx, "jmp _lbl_%d", top_lbl);
+        emit_line(ctx, "jmp _lbl_%d", l_start);
     }
-
-    emit_string(ctx, "_lbl_%d:\n", l_end);
-    ctx->break_label = prev_break;
+    emit_string(ctx, "%s:\n", ctx->break_label);
+    strcpy(ctx->break_label, prev_break);
+    strcpy(ctx->step_label, prev_step);
+    exit_ctx_scope(ctx);
 }
 
 void gen_print(context* ctx, AST node)
@@ -752,7 +845,7 @@ void gen_print(context* ctx, AST node)
     if (k == TYPE_STRING)
     {
         emit_line(ctx, "mov dx, ax");
-        emit_line(ctx, "call print_str");
+        emit_line(ctx, "call print_string");
     }
     else if (k == TYPE_CHAR)
     {
@@ -760,13 +853,23 @@ void gen_print(context* ctx, AST node)
         emit_line(ctx, "call print_char");
     }
     else if (k == TYPE_INT)
+    {
         emit_line(ctx, "call print_int");
+        emit_line(ctx, "mov dl, 0Ah");
+        emit_line(ctx, "mov ah, 02h");
+        emit_line(ctx, "int 21h");
+    }
     else if (k == TYPE_NATURAL)
+    {
         emit_line(ctx, "call print_int");
+        emit_line(ctx, "mov dl, 0Ah");
+        emit_line(ctx, "mov ah, 02h");
+        emit_line(ctx, "int 21h");
+    }
     else if (k == TYPE_RATIONAL)
-        emit_line(ctx, "call print_rat");
+        emit_line(ctx, "call print_rational");
     else if (k == TYPE_FLOAT)
-        emit_line(ctx, "call print_flt");
+        emit_line(ctx, "call print_float");
     else if (k == TYPE_BOOL)
         emit_line(ctx, "call print_bool");
 
@@ -804,32 +907,29 @@ void gen_literal(context* ctx, AST node)
 
     if (type == TYPE_STRING)
     {
-        idx = add_string(node->data.name);
+        idx = add_string(node->name);
         emit_line(ctx, "lea ax, [_str_%d]", idx);
     }
     else if (type == TYPE_CHAR)
     {
-        emit_line(ctx, "mov ax, %d", (int)(node->data.name[0]));
+        emit_line(ctx, "mov ax, %d", node->name);
     }
     else if (type == TYPE_BOOL || type == TYPE_INT || type == TYPE_NATURAL)
     {
-        emit_line(ctx, "mov ax, %d", (int)(node->data.value));
+        emit_line(ctx, "mov ax, %d", node->value1);
     }
-    else if (type == TYPE_FLOAT)
+    else if (type == TYPE_FLOAT || type == TYPE_RATIONAL)
     {
-        ipart = (int)(node->data.value);
-        fpart = (int)((node->data.value - ipart) * 100);
-        emit_line(ctx, "mov ax, %d \nmov bx, %d", ipart, fpart);
-    }
-    else if (type == TYPE_RATIONAL)
-    {
-        //
+        ipart = node->value1;
+        fpart = node->value2;
+        emit_line(ctx, "mov ax, %d", ipart);
+        emit_line(ctx, "mov bx, %d", fpart);
     }
 }
 
 void gen_ident(context* ctx, AST node)
 {
-    symbol_link* sym = lookup(ctx, node->data.name);
+    symbol_link* sym = lookup(ctx, node->name);
     if (sym)
         emit_load(ctx, sym);          
 }
@@ -864,7 +964,7 @@ void call_cleanup(context* ctx, symbol_link* funcsym, int count)
 void gen_func_call(context* ctx, AST node)
 {
     symbol_link* funcsym;
-    char* fname = node->children[0]->data.name;
+    char* fname = node->children[0]->name;
     AST arg_list = node->children[1];
     int count = arg_list ? arg_list->children_count : 0;
     int total_bytes = 0, i;
@@ -933,44 +1033,69 @@ void gen_quo(context* ctx)
 
 void gen_equal(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "sete al");
+    emit_line(ctx, "jne _equal_false_%d", lbl);
+    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "jmp _equal_end_%d", lbl);
+    emit_string(ctx, "_equal_false_%d:\n", lbl);
+    emit_line(ctx, "mov al, 0");
+    emit_string(ctx, "_equal_end_%d:\n", lbl);
 }
 void gen_different(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "setne al");
+    emit_line(ctx, "je _diff_false_%d", lbl);
+    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "jmp _diff_end_%d", lbl);
+    emit_string(ctx, "_diff_false_%d:\n", lbl);
+    emit_line(ctx, "mov al, 0");
+    emit_string(ctx, "_diff_end_%d:\n", lbl);
 }
 void gen_greater(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "setg al");
+    emit_line(ctx, "jng _grtr_false_%d", lbl);
+    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "jmp _grtr_end_%d", lbl);
+    emit_string(ctx, "_grtr_false_%d:\n", lbl);
+    emit_line(ctx, "mov al, 0");
+    emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
 void gen_grt_eq(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
+    emit_line(ctx, "jge  _grt_true_%d", lbl);
     emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "je  _true");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "jmp _done");
-    emit_string(ctx, "_true :\n");
+    emit_line(ctx, "jmp _grt_done_%d", lbl);
+    emit_string(ctx, "_grt_true_%d :\n", lbl);
     emit_line(ctx, "mov ax, 1");
-    emit_string(ctx, "_done :\n ");
+    emit_string(ctx, "_grt_done_%d :\n ", lbl);
 }
 void gen_less(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "setl al");
+    emit_line(ctx, "jnl _less_false_%d", lbl);
+    emit_line(ctx, "mov al, 1");
+    emit_line(ctx, "jmp _less_end_%d", lbl);
+    emit_string(ctx, "_less_false_%d:\n", lbl);
+    emit_line(ctx, "mov al, 0");
+    emit_string(ctx, "_less_end_%d:\n", lbl);
 }
 void gen_lss_eq(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, bx");
-    emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "setle al");
+    emit_line(ctx, "jle _grtr_true_%d", lbl);
+    emit_line(ctx, "mov al, 0");
+    emit_line(ctx, "jmp _grtr_end_%d", lbl);
+    emit_string(ctx, "_grtr_true_%d:\n", lbl);
+    emit_line(ctx, "mov al, 1");
+    emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
 
 void gen_log_or(context* ctx)
@@ -1001,9 +1126,14 @@ void gen_log_and(context* ctx)
 }
 void gen_log_not(context* ctx)
 {
+    int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, 0");
+    emit_line(ctx, "je _not_true_%d");
     emit_line(ctx, "mov ax, 0");
-    emit_line(ctx, "sete al");
+    emit_line(ctx, "jmp _not_end_%d");
+    emit_string(ctx, "_not_true_%d:\n", lbl);
+    emit_line(ctx, "mov ax, 1");
+    emit_string(ctx, "_not_end_%d:\n", lbl);
 }
 
 void gen_bit_or(context* ctx)
@@ -1041,7 +1171,7 @@ static emit_noarg_func BINARY_OP[21] = {
     gen_sub, //NODE_SUB
     gen_mul, //NODE_MUL
     gen_div, //NODE_DIV
-    gen_div, //NODE_MOD
+    gen_mod, //NODE_MOD
     gen_quo, //NODE_QUO
     gen_log_or, //NODE_LOG_OR
     gen_bit_or, //NODE_BIT_OR
@@ -1071,6 +1201,8 @@ void gen_binary(context* ctx, AST node)
     emit_line(ctx, "pop ax");       
 
     BINARY_OP[node->kind - NODE_ADD](ctx);
+
+    emit_line(ctx, "mov [_UNDERLINE], ax");
 }
 
 void gen_type_cast(context* ctx, AST node)
@@ -1107,12 +1239,12 @@ void gen_parameter(context* ctx, AST node) {}
 
 void gen_char(context* ctx, AST node)
 {
-    emit_line(ctx, "mov ax, %d", node->data.value);
+    emit_line(ctx, "mov ax, %s", node->name);
 }
 
 void gen_string(context* ctx, AST node)
 {
-    int idx = add_string(node->data.name);
+    int idx = add_string(node->name);
     emit_line(ctx, "lea ax, [_str_%d]", idx);
 }
 
@@ -1128,23 +1260,27 @@ void gen_start(context* ctx, AST node)
     emit_string(ctx, ".STACK 100h\n");
     emit_string(ctx, ".DATA\n");
     emit_string(ctx, "; --- global variables ---\n");
-    //gen_globals(ctx);
+    emit_string(ctx, "true db 'true$'\n");
+    emit_string(ctx, "false db 'false$'\n");
     emit_string(ctx, "_UNDERLINE dw 0\n");
     emit_string(ctx, "_UNDERLINE_hi dw 0\n");
-    underline_emitted = 1;
 
     emit_string(ctx, "; --- code section ---\n");
     emit_string(ctx, ".CODE\n");
     emit_string(ctx, "MAIN PROC\n");
-    emit_string(ctx, "\tmov ax, @DATA\n");
+    emit_string(ctx, "\tmov ax, DGROUP\n");
     emit_string(ctx, "\tmov ds, ax\n");
     emit_string(ctx, "\tmov es, ax\n");
 
+    func_buff = fopen("output/funcbuff.txt", "w");
     gen_node(ctx, node->children[0]);
+    fclose(func_buff);
 
     emit_string(ctx, "\tmov ax, 4C00h\n");
     emit_string(ctx, "\tint 21h\n");
     emit_string(ctx, "MAIN ENDP\n\n");
+
+    emit_func_buffer(ctx);
 
     emit_procedures(ctx);
 
@@ -1152,12 +1288,13 @@ void gen_start(context* ctx, AST node)
         emit_string(ctx, "\n.DATA\n");
         int i;
         for (i = 0; i < strings_count; i++)
-            emit_string(ctx, "_str_%d db \"%s\", '$'\n", i, strings[i]);
+            emit_string_literal(ctx, i, strings[i]);
         for (i = 0; i < str_retbuff_count; i++)
             emit_string(ctx, "_ret_%s db 255 dup(0), '$'\n", str_ret_buffs[i]);
     }
 
     emit_string(ctx, "END MAIN\n");
+
 }
 
 void init_generator_tbl()

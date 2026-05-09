@@ -8,7 +8,7 @@
 
 typedef struct {
 	char lexeme[TOKEN_MAX_LENGTH];
-	double value;
+	int value1, value2; // value1 for integer numerics. for float/rational: 5.7 -> val1:5, val2:7, 5/7 -> val1:5, val2:7
 	symbol type;
 
 	int line, col;

@@ -1,0 +1,31 @@
+@echo off
+if "%1"=="" (
+    echo Usage: run.bat ^<source_file^>
+    exit /b 1
+)
+
+cd Debug
+echo in debug
+
+CompileProj.exe %1
+
+if errorlevel 1 (
+    echo Compilation failed.
+    exit /b 1
+)
+
+cd ..
+
+tasm output\target.asm
+if errorlevel 1 (
+    echo Assembly failed.
+    exit /b 1
+)
+
+tlink output\target.obj
+if errorlevel 1 (
+    echo Linking failed.
+    exit /b 1
+)
+
+output\target.exe

@@ -37,10 +37,12 @@ typedef struct symbol_node {
 	int param_count;
 	param_info* params; 
 
+	int is_param;
+
 	int is_initialized; 
 	AST initializer;
 	int is_init_const;
-	double init_const_val;
+	int init_const_val1, init_const_val2;
 
 	struct symbol_node* next;
 } symbol_link;
@@ -64,7 +66,7 @@ typedef struct {
 
 semanticer* init_semanticer(AST ast, char* error_out);
 
-symbol_link* create_symbol(char* name, semantic_kind, type_kind, int scope_level, int line, int col, int offset);
+symbol_link* create_symbol(char* name, semantic_kind, type_kind, AST initializer, int scope_level, int line, int col, int offset);
 void enter_symbol(scope, symbol_link*);
 symbol_link* get_symbol(scope, char* name);
 symbol_link* extract_symbol(scope, char* name);

@@ -1,11 +1,11 @@
 declare x:int = 12;
-declare y:float = 5.47;
+declare y:int = 5;
 
 if ((x * y) >= 50)
 {
-    print(1);
+    print("X * Y >= 50");
 }
 else
 {
-    print(0);
+    print("X * Y < 50");
 }
