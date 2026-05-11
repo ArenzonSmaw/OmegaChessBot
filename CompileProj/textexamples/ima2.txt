@@ -1,0 +1,25 @@
+print("enter triangle size: ");
+declare size:natural = scan(natural);
+
+declare i:int;
+declare j:int;
+
+i = 0;
+loop (i < size)
+{
+	declare space:int = size-i;
+	j = 0;
+	loop(j < space)
+	{
+		print(" ");
+		j++;
+	}
+	j = 0;
+	loop(j < 1+2*i)
+	{
+		print("*");
+		j++;
+	}
+	print('\');
+	i++;
+}

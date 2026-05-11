@@ -2,9 +2,8 @@ declare x: = 6;
 declare y:float = 5.47;
 
 if ((x * y) >= 50
-{
     print();
-}
+
 else (x+y)%2 == 0
 {
     print(0);

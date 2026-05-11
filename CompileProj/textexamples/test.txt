@@ -1,3 +1,9 @@
-declare rat:rational = 5/10;
+declare f1:float = 3/2;
+declare f2:float = 2.97;
+declare m:int = 2;
 
-print(rat);
+print(f1);
+print(f1*m);
+print(f2);
+
+print(f1*m > f2);

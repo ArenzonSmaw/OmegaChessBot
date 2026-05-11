@@ -33,7 +33,7 @@ declare fizzbuzz:int (n:int)
 }
 
 declare ch:char = 'A';
-loop (declare i:int = 1 -> 10; i++;)
+loop (declare i:int = 1 -> 8; i++;)
 {
     print(ch);
     print(": ");

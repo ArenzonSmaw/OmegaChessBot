@@ -348,12 +348,15 @@ void end_token(lexer* lxr)
 	symbol tkn_type;
 	static void (*method)(lexer*);
 	
-	tkn_type = lxr->data[lxr->count].type;
-	method = end_method[tkn_type];
-	if (method == ignore)
-		lxr->count++;
-	else {
-		method(lxr);
+	if (strcmp(lxr->data[lxr->count].lexeme, ""))
+	{
+		tkn_type = lxr->data[lxr->count].type;
+		method = (tkn_type < 0 || tkn_type > END_TOKEN) ? ignore : end_method[tkn_type];
+		if (method == ignore)
+			lxr->count++;
+		else {
+			method(lxr);
+		}
 	}
 }
 
@@ -828,7 +831,7 @@ void init_numeric_states()
 	SET(ST_INTEGER, CH_DIGIT, ST_INTEGER, add_char);
 	SET(ST_INTEGER, CH_WHITESPACE, ST_START, end_integer);
 	
-	for (ch = CH_HASHTAG; ch < CH_MINUS; ch++)
+	for (ch = CH_PLUS; ch < CH_MINUS; ch++)
 	{
 		SET(ST_INTEGER, ch, ST_START, end_token_start_operator);
 	}
@@ -938,6 +941,9 @@ void init_comments()
 	state st;
 	INPUT ch;
 	
+	for (st = ST_START; st <= ST_ERROR; st++)
+		SET(st, CH_HASHTAG, ST_COMMENT1, end_token);
+
 	for (ch = CH_UNKNOWN; ch <= CH_PRINTABLE; ch++)
 	{
 		for (st = ST_COMMENT1; st <= ST_COMMENT3; st++)
@@ -973,6 +979,7 @@ void init_tables()
 	init_operator_states();
 	init_numeric_states();
 	init_keywords_states();
+	init_comments();
 } 
 
 

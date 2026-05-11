@@ -6,6 +6,11 @@
 
 #define TABLE_ROWS 256
 
+static int IS_FLT_OR_RAT[TYPE_ERROR + 1] = {
+	/*INT*/0, /*FLOAT*/1, /*NATURAL*/0, /*RATIONAL*/1, /*BOOL*/0,
+	/*CHAR*/0, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
+};
+
 typedef enum
 {
 	VARIABLE,
@@ -14,7 +19,6 @@ typedef enum
 	FUNCTION,
 	LABEL
 } semantic_kind;
-
 
 typedef struct {
 	char* name;
@@ -77,7 +81,7 @@ int symbol_exist(scope, char* name);
 int type_size(type_kind);
 
 
-scope init_scope(int level, scope parent);
+scope init_scope(int level, scope parent, int is_function);
 int hash(char* symbolname);
 
 void enter_scope(semanticer*);

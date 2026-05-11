@@ -1,0 +1,11 @@
+declare x:int =0;
+declare y:int =1;
+
+loop(declare i:int =0 -> 8;i++;)
+    {
+        print(x+y);
+        x=x+y;
+        y=y+x;
+        print(y);
+    }
+	

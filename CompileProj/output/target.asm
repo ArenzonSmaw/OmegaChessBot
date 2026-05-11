@@ -13,126 +13,97 @@ MAIN PROC
     mov ds, ax
     mov es, ax
     mov bp, sp
-    sub sp, 4
-    lea ax, [_str_0]
-    mov dx, ax
-    call print_string
-    mov [_UNDERLINE], ax
+    sub sp, 10
+    mov ah, 1
+    int 21h
 
 .DATA
-_size dw 0
+_f1 dw 0
+_f1_hi dw 0
 .CODE
-    call scan_int
-    mov [_size], ax
-    mov ax, 0 ;i
-    mov [bp - 2], ax
-_lbl_0:
-    mov ax, [bp - 2]
+    mov ax, 3
+    mov bx, 2
+    div bx
     push ax
-    mov ax, [_size]
+    push bx
+    mov ax, dx
+    mov bx, 100
+    mul bx
+    pop bx
+    xor dx, dx
+    div bx
     mov bx, ax
     pop ax
-    cmp ax, bx
-    jl _skip_0
-    jmp near ptr _lbl_1
-_skip_0:
-    mov ax, [_size]
-    push ax
-    mov ax, [bp - 2]
-    mov bx, ax
-    pop ax
-    sub ax, bx ;space = size-i
-    mov [_UNDERLINE], ax
-    mov [bp - 4], ax
-    mov ax, 0
-    mov [bp - 2], ax
-_lbl_2:
-    mov ax, [bp - 2] ;j 
-    push ax
-    mov ax, [bp - 4] ; space
-    mov bx, ax
-    pop ax
-    cmp ax, bx
-    jl _skip_2
-    jmp near ptr _lbl_3
-_skip_2:
-    lea ax, [_str_1]
-    mov dx, ax
-    call print_string
-    mov [_UNDERLINE], ax
-_step_2:
-    mov ax, [bp - 2]
-    push ax
-    mov ax, 1
-    mov bx, ax
-    pop ax
-    add ax, bx
-    mov [_UNDERLINE], ax
-    mov [bp - 2], ax
-    mov [_UNDERLINE], ax
-    jmp _lbl_2
-_lbl_3:
-    mov ax, 0
-    mov [bp - 2], ax
-_lbl_4:
-    mov ax, [bp - 2]
-    push ax
-    mov ax, 1
-    push ax
+    mov [_f1], ax
+    mov [_f1_hi], bx
+
+.DATA
+_f2 dw 0
+_f2_hi dw 0
+.CODE
     mov ax, 2
+    mov bx, 97
+    mov [_f2], ax
+    mov [_f2_hi], bx
+
+.DATA
+_m dw 0
+.CODE
+    mov ax, 2
+    mov [_m], ax
+    mov ax, [_f1]
+    mov bx, [_f1_hi]
+    call print_float
+    mov [_UNDERLINE], ax
+    mov ax, [_f1]
+    mov bx, [_f1_hi]
     push ax
-    mov ax, [bp - 2]
-    mov bx, ax
+    push bx
+    mov ax, [_m]
+    mov cx, ax
+    pop bx
     pop ax
-    imul bx
+    call f_mul
     mov [_UNDERLINE], ax
-    mov bx, ax
-    pop ax
-    add ax, bx
+    call print_float
     mov [_UNDERLINE], ax
-    mov bx, ax
-    pop ax
-    cmp ax, bx
-    jl _skip_4
-    jmp near ptr _lbl_5
-_skip_4:
-    lea ax, [_str_2]
-    mov dx, ax
-    call print_string
+    mov ax, [_f2]
+    mov bx, [_f2_hi]
+    call print_float
     mov [_UNDERLINE], ax
-_step_4:
-    mov ax, [bp - 2]
+    mov ax, [_f1]
+    mov bx, [_f1_hi]
     push ax
+    push bx
+    mov ax, [_m]
+    mov cx, ax
+    pop bx
+    pop ax
+    call f_mul
+    mov [_UNDERLINE], ax
+    push ax
+    push bx
+    mov ax, [_f2]
+    mov bx, [_f2_hi]
+    mov cx, ax
+    mov dx, bx
+    pop bx
+    pop ax
+    call f_cmp
+    jng _grtr_false_0
     mov ax, 1
-    mov bx, ax
-    pop ax
-    add ax, bx
+    jmp _grtr_end_0
+_grtr_false_0:
+    mov ax, 0
+_grtr_end_0:
     mov [_UNDERLINE], ax
-    mov [bp - 2], ax
+    call print_bool
     mov [_UNDERLINE], ax
-    jmp _lbl_4
-_lbl_5:
-    mov ax, '\'
-    mov dl, al
-    call print_char
-    mov [_UNDERLINE], ax
-_step_0:
-    mov ax, [bp - 2]
-    push ax
-    mov ax, 1
-    mov bx, ax
-    pop ax
-    add ax, bx
-    mov [_UNDERLINE], ax
-    mov [bp - 2], ax
-    mov [_UNDERLINE], ax
-    jmp _lbl_0
-_lbl_1:
+    add sp, 10
     mov dl, 0Ah
     call print_char
     mov ax, 4C00h
     int 21h
-    ret
 MAIN ENDP
 
 print_int proc
@@ -208,6 +179,7 @@ print_float proc
     mov dl, '0'
     mov ah, 02h
     int 21h
+    mov ax, bx
 pf_print_frac:
     call print_int
     mov dl, 0Ah
@@ -372,9 +344,64 @@ scan_bool_finish:
     ret
 scan_bool ENDP
 
+f_add PROC
+    add bx, dx
+    cmp bx, 100
+    jl _fadd_no_carry
+    sub bx, 100
+    inc ax
+_fadd_no_carry:
+    add ax, cx
+    ret
+f_add ENDP
 
-.DATA
-_str_0 db "enter triangle size: ", '$'
-_str_1 db " ", '$'
-_str_2 db "*", '$'
+f_sub PROC
+    sub bx, dx
+    cmp bx, 0
+    jge _fsub_no_borrow
+    add bx, 100
+    dec ax
+_fsub_no_borrow:
+    sub ax, cx
+    ret
+f_sub ENDP
+
+f_mul PROC
+    push ax
+    mov ax, bx
+    mul cx
+    push cx
+    mov cx, 100
+    div cx
+    xchg ax, dx
+    pop cx
+    mov bx, ax
+    pop ax
+    push dx
+    imul cx
+    pop dx
+    add ax, dx
+    ret
+f_mul ENDP
+
+f_div PROC
+    mov dx, 0
+    idiv cx
+    push ax
+    mov ax, bx
+    add ax, dx
+    div cx
+    mov bx, ax
+    pop ax
+    ret
+f_div ENDP
+
+f_cmp PROC
+    cmp ax, cx
+    jne _fcmp_done
+    cmp bx, dx
+_fcmp_done:
+    ret
+f_cmp ENDP
+
 END MAIN

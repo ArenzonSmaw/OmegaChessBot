@@ -13,6 +13,7 @@ int IS_INTEGER[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/0, /*NATURAL*/1, /*RATIONAL*/0, /*BOOL*/0,
 	/*CHAR*/1, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
 };
+
 int IS_NUMERIC[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/1, /*NATURAL*/1, /*RATIONAL*/1, /*BOOL*/1,
 	/*CHAR*/1, /*STRING*/0, /*VOID*/0, /*POINTER*/0, /*EXCEPTION*/0, /*ERROR*/0
@@ -24,6 +25,30 @@ int IS_SCALAR[TYPE_ERROR + 1] = {
 int TYPE_WIDTH[TYPE_ERROR + 1] = {
 	/*INT*/1, /*FLOAT*/3, /*NATURAL*/0, /*RATIONAL*/2, /*BOOL*/0,
 	/*CHAR*/1, /*STRING*/-1, /*VOID*/-1, /*POINTER*/-1, /*EXCEPTION*/4, /*ERROR*/-1
+};
+
+int FLOAT_FRIENDLY[] = {
+	1,	//NODE_ADD
+	1,	//NODE_SUB
+	1,	//NODE_MUL
+	1,	//NODE_DIV
+	0,	//NODE_MOD
+	0,	//NODE_QUO
+	1,	//NODE_LOG_OR
+	0,	//NODE_BIT_OR
+	1,	//NODE_LOG_AND
+	0,	//NODE_BIT_AND
+	1,	//NODE_LOG_NOT
+	0,	//NODE_BIT_NOT
+	0,	//NODE_BIT_RIGHT
+	0,	//NODE_BIT_LEFT
+	1,	//NODE_LOG_EQUAL
+	1,	//NODE_LOG_DIFFERENT
+	1,	//NODE_GREAT
+	1,	//NODE_GREAT_EQUAL
+	1,	//NODE_LESS
+	1,	//NODE_LESS_EQUAL
+	0	//NODE_XOR
 };
 
 
@@ -105,7 +130,7 @@ symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, AST i
 	sym->type = type;
 
 	sym->scope_level = scope_level;
-	sym->is_global = scope_level == 0;
+	sym->is_global = scope_level == 1;
 
 	sym->decl_line = line;
 	sym->decl_col = col;
@@ -136,21 +161,24 @@ symbol_link* create_symbol(char* name, semantic_kind kind, type_kind type, AST i
 	return sym;
 }
 
-scope init_scope(int level, scope parent)
+scope init_scope(int level, scope parent, int is_function)
 {
 	int i;
 	scope scp = (scope)malloc(sizeof(scope_node));
 	scp->level = level;
-	if (parent) {
-		scp->parent = parent;
+	scp->parent = parent;
+
+
+	if (!parent || is_function) {
+		scp->param_offset_next = 4;
+		scp->local_offset_next = 0;
 	}
 	else
 	{
-		scp->parent = NULL;
+		scp->param_offset_next = 4;
+		scp->local_offset_next = parent->local_offset_next;
 	}
 
-	scp->param_offset_next = 2;
-	scp->local_offset_next = 2;
 
 	for (i = 0; i < TABLE_ROWS; i++)
 		scp->table[i] = NULL;
@@ -186,6 +214,7 @@ symbol_link* get_symbol(scope scp, char* name)
 	index = hash(name) % TABLE_ROWS;
 	temp = scp->table[index];
 
+
 	while (temp != NULL && strcmp(temp->name, name))
 		temp = temp->next;
 	
@@ -219,10 +248,10 @@ symbol_link* extract_symbol(scope scp, char* name)
 	return sym;
 }
 
-void enter_scope(semanticer* smt)
+void enter_scope(semanticer* smt, int is_function)
 {
 	scope scp = smt->current_scope;
-	smt->current_scope = init_scope(scp->level+1, scp);
+	smt->current_scope = init_scope(scp->level+1, scp, is_function);
 }
 
 void exit_scope(semanticer* smt)
@@ -256,6 +285,7 @@ void analyze(semanticer* smt, AST ast)
 	//analyzes the current ast node via dipatching handlers
 	handle handler = HANDLE_DISPATCH[ast->kind];
 	handler(smt, ast);
+	ast->local_size = smt->current_scope->local_offset_next;
 }
 void start_handler(semanticer* smt, AST ast)
 {
@@ -300,9 +330,9 @@ void func_declare_handler(semanticer* smt, AST ast)
 		}
 	}
 	enter_symbol(smt->current_scope, fsym);
-	enter_scope(smt);
 	prev_infunc = smt->in_function;
 	smt->in_function = 1;
+	enter_scope(smt, smt->in_function);
 	prev_rettype = smt->current_return_type;
 	smt->current_return_type = return_type;
 	for (i = 0; i < fsym->param_count; i++)
@@ -333,14 +363,10 @@ void var_declare_handler(semanticer* smt, AST ast)
 	if (decl->kind == NODE_PARAMETER) {
 		declared_type = decl->children[0]->type;
 		name = decl->children[1]->name;
-		offset = smt->current_scope->param_offset_next;
-		smt->current_scope->param_offset_next += type_size(declared_type);
 	}
 	else {
 		name = decl->name;
 		declared_type = ast->type;
-		offset = smt->current_scope->local_offset_next;
-		smt->current_scope->local_offset_next += type_size(declared_type);
 	}
 
 	if (symbol_exist(smt->current_scope, name)) 
@@ -357,6 +383,8 @@ void var_declare_handler(semanticer* smt, AST ast)
 			prod_error(smt, "TYPE ERROR", "incompatible declare and initiation types for '", name, ast->line, ast->col);
 		}
 	}
+	offset = smt->current_scope->local_offset_next;
+	smt->current_scope->local_offset_next += type_size(declared_type);
 	symbol_link* sym = create_symbol(name, VARIABLE, declared_type, initializer, smt->current_scope->level,
 		ast->line, ast->col, offset);
 	enter_symbol(smt->current_scope, sym);
@@ -439,11 +467,16 @@ void stmt_list_handler(semanticer* smt, AST ast)
 {
 	//handles statement list node
 	int i;
+	enter_scope(smt, 0);
+
 	for (i = 0; i < ast->children_count; i++)
 	{
 		if (ast->children[i])
 			analyze(smt, ast->children[i]);
 	}
+	ast->local_size = smt->current_scope->local_offset_next;
+	if (smt->in_function || smt->loop_depth > 0)
+		exit_scope(smt);
 }
 
 void if_handler(semanticer* smt, AST ast)
@@ -463,13 +496,13 @@ void if_handler(semanticer* smt, AST ast)
 	}
 
 	//block
-	enter_scope(smt);
+	enter_scope(smt, 0);
 	analyze(smt, then);
 	exit_scope(smt);
 
 	//else
 	if (othrwise != NULL) {
-		enter_scope(smt);
+		enter_scope(smt, 0);
 		analyze(smt, othrwise); 
 		exit_scope(smt);
 	}
@@ -479,7 +512,7 @@ void loop_handler(semanticer* smt, AST ast)
 {
 	//handles loop node
 
-	enter_scope(smt);
+	enter_scope(smt, 0);
 	smt->loop_depth++;
 
 	if (ast->children_count == 2) { 
@@ -581,8 +614,20 @@ void arithmetic_handler(semanticer* smt, AST ast)
 	{
 		analyze(smt, right);
 
-		if (!IS_INTEGER[left->type] || !IS_INTEGER[right->type]) {
-			prod_error(smt, "TYPE ERROR", "arithmetic operands must be integer types", "\0", ast->line, ast->col);
+		if (!IS_SCALAR[left->type] || !IS_SCALAR[right->type]) {
+			prod_error(smt, "TYPE ERROR", "arithmetic operands must be scalar types", "\0", ast->line, ast->col);
+
+			ast->type = TYPE_ERROR;
+		}
+		else if (!IS_FLT_OR_RAT[left->type] && IS_FLT_OR_RAT[right->type])
+		{
+			prod_error(smt, "TYPE ERROR", "floating arithmetics must be [flt] OP [NUM] or [flt] OP [flt]", "\0", ast->line, ast->col);
+
+			ast->type = TYPE_ERROR;
+		}
+		else if (IS_FLT_OR_RAT[left->type] && FLOAT_FRIENDLY[ast->kind])
+		{
+			prod_error(smt, "TYPE ERROR", "illegal operation for floating operands", "\0", ast->line, ast->col);
 
 			ast->type = TYPE_ERROR;
 		}
@@ -807,7 +852,7 @@ semanticer* init_semanticer(AST ast, char* error_file)
 	{
 		smt->ast = ast;
 		smt->error = err_list(err);
-		smt->current_scope = init_scope(0, NULL);
+		smt->current_scope = init_scope(0, NULL, 0);
 		smt->in_function = 0;
 		smt->loop_depth = 0;
 		smt->current_return_type = TYPE_VOID;

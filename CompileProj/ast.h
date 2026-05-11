@@ -100,6 +100,8 @@ typedef struct ast_node
 
 	int line, col;
 
+	int local_size;
+
 	struct ast_node** children;
 	int children_count, children_size;
 } syntax_node, * AST;

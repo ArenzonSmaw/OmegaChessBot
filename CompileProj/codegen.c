@@ -38,7 +38,7 @@ context* init_context(FILE* out, scope global)
     {
         ctx->out = out;
         ctx->current_scope = global;
-        
+        ctx->current_scope->param_offset_next = ctx->current_scope->local_offset_next = 2;
         ctx->label_count = 0;
         ctx->temp_count = 0;
 
@@ -87,7 +87,7 @@ symbol_link* lookup(context* ctx, char* name)
 
 void enter_ctx_scope(context* ctx)
 {
-    scope child = init_scope(ctx->current_scope->level + 1, ctx->current_scope);
+    scope child = init_scope(ctx->current_scope->level + 1, ctx->current_scope, 0);
     ctx->current_scope = child;
 }
 void exit_ctx_scope(context* ctx)
@@ -312,6 +312,7 @@ void emit_print_float_proc(context* ctx)
     emit_line(ctx, "mov dl, '0'");
     emit_line(ctx, "mov ah, 02h");
     emit_line(ctx, "int 21h");
+    emit_line(ctx, "mov ax, bx");
     emit_string(ctx, "pf_print_frac:\n");
     emit_line(ctx, "call print_int");
     emit_line(ctx, "mov dl, 0Ah");
@@ -509,6 +510,78 @@ void emit_scan_bool_proc(context* ctx)
     emit_string(ctx, "scan_bool ENDP\n\n");
 }
 
+void emit_f_add_proc(context* ctx) 
+{
+    emit_string(ctx, "f_add PROC\n");
+    emit_line(ctx, "add bx, dx");
+    emit_line(ctx, "cmp bx, 100");
+    emit_line(ctx, "jl _fadd_no_carry");
+    emit_line(ctx, "sub bx, 100");
+    emit_line(ctx, "inc ax");
+    emit_string(ctx, "_fadd_no_carry:\n");
+    emit_line(ctx, "add ax, cx");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "f_add ENDP\n\n");
+}
+void emit_f_sub_proc(context* ctx) 
+{
+    emit_string(ctx, "f_sub PROC\n");
+    emit_line(ctx, "sub bx, dx");
+    emit_line(ctx, "cmp bx, 0");
+    emit_line(ctx, "jge _fsub_no_borrow");
+    emit_line(ctx, "add bx, 100");
+    emit_line(ctx, "dec ax");
+    emit_string(ctx, "_fsub_no_borrow:\n");
+    emit_line(ctx, "sub ax, cx");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "f_sub ENDP\n\n");
+}
+void emit_f_mul_proc(context* ctx) 
+{
+    emit_string(ctx, "f_mul PROC\n");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "mul cx");
+    emit_line(ctx, "push cx");
+    emit_line(ctx, "mov cx, 100");
+    emit_line(ctx, "div cx");
+    emit_line(ctx, "xchg ax, dx");
+    emit_line(ctx, "pop cx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "push dx");
+    emit_line(ctx, "imul cx");
+    emit_line(ctx, "pop dx");
+    emit_line(ctx, "add ax, dx");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "f_mul ENDP\n\n");
+}
+void emit_f_div_proc(context* ctx) 
+{
+    emit_string(ctx, "f_div PROC\n");
+    emit_line(ctx, "mov dx, 0");
+    emit_line(ctx, "idiv cx");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "add ax, dx");
+    emit_line(ctx, "div cx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "f_div ENDP\n\n");
+}
+
+void emit_f_cmpr_proc(context* ctx) 
+{
+    emit_string(ctx, "f_cmp PROC\n");
+    emit_line(ctx, "cmp ax, cx");
+    emit_line(ctx, "jne _fcmp_done");
+    emit_line(ctx, "cmp bx, dx");
+    emit_string(ctx, "_fcmp_done:\n");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "f_cmp ENDP\n\n");
+}
+
 void emit_procedures(context* ctx)
 {
     emit_print_int_proc(ctx);
@@ -522,6 +595,12 @@ void emit_procedures(context* ctx)
     emit_scan_float_proc(ctx);
     emit_scan_rational_proc(ctx);
     emit_scan_bool_proc(ctx);
+
+    emit_f_add_proc(ctx);
+    emit_f_sub_proc(ctx);
+    emit_f_mul_proc(ctx);
+    emit_f_div_proc(ctx);
+    emit_f_cmpr_proc(ctx);
 }
 
 
@@ -575,7 +654,7 @@ void emit_scan_bool(context* ctx)
 
 
 
-
+void conv_rat_to_float(context*);
 
 void gen_node(context* ctx, AST node)
 {
@@ -602,8 +681,14 @@ void gen_globals(context* ctx)
 void gen_stmt_list(context* ctx, AST node)
 {
     int i;
+    int offset = ctx->current_scope->local_offset_next;
+    enter_ctx_scope(ctx);
+    ctx->current_scope->local_offset_next = offset;
+
     for (i = 0; i < node->children_count; i++)
         gen_node(ctx, node->children[i]);
+
+    exit_ctx_scope(ctx);
 }
 
 void gen_block(context* ctx, AST node)
@@ -623,17 +708,11 @@ void gen_var_declare(context* ctx, AST node)
     int offset;
 
     if (param->kind == NODE_PARAMETER)
-    {
         id = param->children[1];
-        offset = ctx->current_scope->param_offset_next;
-        ctx->current_scope->param_offset_next += type_size(param->type);
-    }
     else
-    {
         id = param;
-        offset = ctx->current_scope->local_offset_next;
-        ctx->current_scope->local_offset_next += type_size(param->type);
-    }
+
+    
 
     symbol_link* sym = get_symbol(ctx->current_scope, id->name);
 
@@ -645,6 +724,9 @@ void gen_var_declare(context* ctx, AST node)
     }
     else
     {
+        offset = ctx->current_scope->local_offset_next;
+        ctx->current_scope->local_offset_next += type_size(param->type);
+
         enter_symbol(ctx->current_scope, 
             create_symbol(id->name, VARIABLE, param->children[0]->type,
                 NULL , ctx->current_scope->level, id->line, id->col, offset));
@@ -653,6 +735,8 @@ void gen_var_declare(context* ctx, AST node)
     if (node->children_count == 2 && node->children[1])
     {
         gen_expr(ctx, node->children[1]);
+        if (param->children[0]->type = TYPE_FLOAT && node->children[1]->type == TYPE_RATIONAL)
+            conv_rat_to_float(ctx);
         emit_store(ctx, sym);
     }
 }
@@ -690,6 +774,7 @@ void gen_func_declare(context* ctx, AST node)
     char* fname = name_param->children[1]->name;   /* id child */
     type_kind rettype = name_param->children[0]->type;
     
+    int local_size = ctx->current_scope->local_offset_next;
     ctx->out = func_buff;
 
     if (rettype == TYPE_STRING)
@@ -707,20 +792,19 @@ void gen_func_declare(context* ctx, AST node)
     emit_line(ctx, "push dx");
     emit_line(ctx, "push si");
     emit_line(ctx, "push di");
+    emit_line(ctx, "sub sp, %d", local_size);
 
     enter_ctx_scope(ctx);
-    ctx->current_scope->param_offset_next += 2; // caller IP in stack
+ 
     if (param_list)
         re_enter_params(ctx, param_list);
 
-    int local_size = ctx->current_scope->local_offset_next;
-    if (local_size > 0)
-        emit_line(ctx, "sub sp, %d", local_size);
 
     gen_node(ctx, body); 
 
     /* epilogue (also emitted by gen_return; this is the fall-through path) */
     emit_string(ctx, "_%s_epilogue:\n", fname);
+    emit_line(ctx, "add sp, %d", local_size);
     emit_line(ctx, "pop di");
     emit_line(ctx, "pop si");
     emit_line(ctx, "pop dx");
@@ -828,11 +912,12 @@ void gen_loop(context* ctx, AST node)
         emit_string(ctx, "_skip_%d:\n", l_start);
         gen_node(ctx, node->children[1]);   /* body */
         emit_line(ctx, "jmp _lbl_%d", l_start);
+        emit_string(ctx, "%s:\n", ctx->break_label);
     }
     else
     {
         // for-style: init, condition check, body, step, repeat
-
+        node->children[0]->local_size += 2; // iterator variable
         gen_var_declare(ctx, node->children[0]);    /* init var */
         char* vname = node->children[0]->children[0]->children[1]->name;
         symbol_link* sym = lookup(ctx, vname);
@@ -852,8 +937,9 @@ void gen_loop(context* ctx, AST node)
         emit_string(ctx, "%s:\n", ctx->step_label);
         gen_node(ctx, node->children[2]);           /* step */
         emit_line(ctx, "jmp _lbl_%d", l_start);
+
+        emit_string(ctx, "%s:\n", ctx->break_label);
     }
-    emit_string(ctx, "%s:\n", ctx->break_label);
     strcpy(ctx->break_label, prev_break);
     strcpy(ctx->step_label, prev_step);
     exit_ctx_scope(ctx);
@@ -1027,37 +1113,55 @@ void gen_unary(context* ctx, AST node)
     }
 }
 
-void gen_add(context* ctx)
+void gen_add(context* ctx, int is_float)
 {
-    emit_line(ctx, "add ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_add");
+    else
+        emit_line(ctx, "add ax, bx");
 }
-void gen_sub(context* ctx)
+void gen_sub(context* ctx, int is_float)
 {
-    emit_line(ctx, "sub ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_sub");
+    else
+        emit_line(ctx, "sub ax, bx");
 }
-void gen_mul(context* ctx)
+void gen_mul(context* ctx, int is_float)
 {
-    emit_line(ctx, "imul bx");
+    if (is_float)
+        emit_line(ctx, "call f_mul");
+    else
+        emit_line(ctx, "imul bx");
 }
-void gen_div(context* ctx)
+void gen_div(context* ctx, int is_float)
 {
-    emit_line(ctx, "cwd");
-    emit_line(ctx, "idiv bx");
+    if (is_float)
+        emit_line(ctx, "call f_div");
+    else
+    {
+        emit_line(ctx, "cwd");
+        emit_line(ctx, "idiv bx");
+    }
 }
-void gen_mod(context* ctx)
+void gen_mod(context* ctx, int is_float)
 {
-    gen_div(ctx);
+    gen_div(ctx, 0);
     emit_line(ctx, "mov ax, dx");
 }
-void gen_quo(context* ctx)
+void gen_quo(context* ctx, int is_float)
 {
-    gen_div(ctx);
+    gen_div(ctx, 0);
 }
 
-void gen_equal(context* ctx)
+void gen_equal(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "jne _equal_false_%d", lbl);
     emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _equal_end_%d", lbl);
@@ -1065,10 +1169,14 @@ void gen_equal(context* ctx)
     emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_equal_end_%d:\n", lbl);
 }
-void gen_different(context* ctx)
+void gen_different(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "je _diff_false_%d", lbl);
     emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _diff_end_%d", lbl);
@@ -1076,10 +1184,14 @@ void gen_different(context* ctx)
     emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_diff_end_%d:\n", lbl);
 }
-void gen_greater(context* ctx)
+void gen_greater(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "jng _grtr_false_%d", lbl);
     emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _grtr_end_%d", lbl);
@@ -1087,10 +1199,14 @@ void gen_greater(context* ctx)
     emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
-void gen_grt_eq(context* ctx)
+void gen_grt_eq(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "jge  _grt_true_%d", lbl);
     emit_line(ctx, "mov ax, 0");
     emit_line(ctx, "jmp _grt_done_%d", lbl);
@@ -1098,10 +1214,14 @@ void gen_grt_eq(context* ctx)
     emit_line(ctx, "mov ax, 1");
     emit_string(ctx, "_grt_done_%d :\n ", lbl);
 }
-void gen_less(context* ctx)
+void gen_less(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "jnl _less_false_%d", lbl);
     emit_line(ctx, "mov ax, 1");
     emit_line(ctx, "jmp _less_end_%d", lbl);
@@ -1109,10 +1229,14 @@ void gen_less(context* ctx)
     emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_less_end_%d:\n", lbl);
 }
-void gen_lss_eq(context* ctx)
+void gen_lss_eq(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
-    emit_line(ctx, "cmp ax, bx");
+    if (is_float)
+        emit_line(ctx, "call f_cmp");
+    else
+        emit_line(ctx, "cmp ax, bx");
+
     emit_line(ctx, "jle _grtr_true_%d", lbl);
     emit_line(ctx, "mov ax, 0");
     emit_line(ctx, "jmp _grtr_end_%d", lbl);
@@ -1121,7 +1245,7 @@ void gen_lss_eq(context* ctx)
     emit_string(ctx, "_grtr_end_%d:\n", lbl);
 }
 
-void gen_log_or(context* ctx)
+void gen_log_or(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, 0");
@@ -1134,7 +1258,7 @@ void gen_log_or(context* ctx)
     emit_line(ctx, "mov ax, 1");
     emit_string(ctx, "_lor_done_%d:\n", lbl);
 }
-void gen_log_and(context* ctx)
+void gen_log_and(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, 0");
@@ -1147,7 +1271,7 @@ void gen_log_and(context* ctx)
     emit_line(ctx, "mov ax, 0");
     emit_string(ctx, "_land_done_%d:\n", lbl);
 }
-void gen_log_not(context* ctx)
+void gen_log_not(context* ctx, int is_float)
 {
     int lbl = new_label(ctx);
     emit_line(ctx, "cmp ax, 0");
@@ -1159,35 +1283,35 @@ void gen_log_not(context* ctx)
     emit_string(ctx, "_not_end_%d:\n", lbl);
 }
 
-void gen_bit_or(context* ctx)
+void gen_bit_or(context* ctx, int is_float)
 {
     emit_line(ctx, "or ax, bx");
 }
-void gen_bit_and(context* ctx)
+void gen_bit_and(context* ctx, int is_float)
 {
     emit_line(ctx, "and ax, bx");
 }
-void gen_bit_not(context* ctx)
+void gen_bit_not(context* ctx, int is_float)
 {
     emit_line(ctx, "not ax");
 }
-void gen_shl(context* ctx)
+void gen_shl(context* ctx, int is_float)
 {
     emit_line(ctx, "mov cl, bl");
     emit_line(ctx, "sal ax, cl");
 }
-void gen_shr(context* ctx)
+void gen_shr(context* ctx, int is_float)
 {
     emit_line(ctx, "mov cl, bl");
     emit_line(ctx, "sar ax, cl");
 }
-void gen_xor(context* ctx)
+void gen_xor(context* ctx, int is_float)
 {
     emit_line(ctx, "xor ax, bx");
 }
 
 
-typedef void (*emit_noarg_func)(context*);
+typedef void (*emit_noarg_func)(context*, int);
 static emit_noarg_func BINARY_OP[21] = {
 
     gen_add, //NODE_ADD
@@ -1214,18 +1338,63 @@ static emit_noarg_func BINARY_OP[21] = {
 
 };
 
+void conv_rat_to_float(context* ctx)
+{
+    emit_line(ctx, "div bx");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "push bx");
+    emit_line(ctx, "mov ax, dx");
+    emit_line(ctx, "mov bx, 100");
+    emit_line(ctx, "mul bx");
+    emit_line(ctx, "pop bx");
+    emit_line(ctx, "xor dx, dx");
+    emit_line(ctx, "div bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+}
+
+void gen_float_arith(context* ctx, AST node)
+{
+    if (node->children[0]->type == TYPE_RATIONAL)
+    {
+        conv_rat_to_float(ctx);
+    }
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "push bx");
+    gen_expr(ctx, node->children[1]);
+    emit_line(ctx, "mov cx, ax");
+    if (IS_FLT_OR_RAT[node->children[1]->type])
+        emit_line(ctx, "mov dx, bx");
+    emit_line(ctx, "pop bx");
+    emit_line(ctx, "pop ax");
+
+    BINARY_OP[node->kind - NODE_ADD](ctx, 1);
+}
+
 void gen_binary(context* ctx, AST node)
 {
-    gen_expr(ctx, node->children[0]);
-
-    if (node->children[1])
+    if (IS_FLT_OR_RAT[node->children[0]->type] || IS_FLT_OR_RAT[node->children[1]->type])
+    {
+        gen_float_arith(ctx, node);
+    }
+    else
     {
         emit_line(ctx, "push ax");
         gen_expr(ctx, node->children[1]);
         emit_line(ctx, "mov bx, ax");
         emit_line(ctx, "pop ax");
 
-        BINARY_OP[node->kind - NODE_ADD](ctx);
+        BINARY_OP[node->kind - NODE_ADD](ctx, 0);
+    }
+}
+
+void gen_arithmetic(context* ctx, AST node)
+{
+    gen_expr(ctx, node->children[0]);
+
+    if (node->children[1])
+    {
+        gen_binary(ctx, node);
     }
     else
     {
@@ -1265,8 +1434,6 @@ void gen_type_cast(context* ctx, AST node)
 
 void gen_parameter(context* ctx, AST node) {}
 
-//
-
 void gen_char(context* ctx, AST node)
 {
     emit_line(ctx, "mov ax, %s", node->name);
@@ -1301,19 +1468,18 @@ void gen_start(context* ctx, AST node)
     emit_line(ctx, "mov ax, DGROUP");
     emit_line(ctx, "mov ds, ax");
     emit_line(ctx, "mov es, ax");
-
-    emit_line(ctx, "sub sp, %d", ctx->current_scope->local_offset_next);
-    ctx->current_scope->local_offset_next = ctx->current_scope->param_offset_next = 2;
+    emit_line(ctx, "mov bp, sp");
+    emit_line(ctx, "sub sp, %d", node->local_size);
 
     func_buff = fopen("output/funcbuff.txt", "w");
     gen_node(ctx, node->children[0]);
     fclose(func_buff);
 
+    emit_line(ctx, "add sp, %d", node->local_size);
     emit_line(ctx, "mov dl, 0Ah");
     emit_line(ctx, "call print_char");
     emit_line(ctx, "mov ax, 4C00h");
     emit_line(ctx, "int 21h");
-    emit_line(ctx, "ret");
     emit_string(ctx, "MAIN ENDP\n\n");
 
     emit_func_buffer(ctx);
@@ -1360,7 +1526,7 @@ void init_generator_tbl()
     GENERATOR[NODE_PRINT] = gen_print; 
 
     for (i = NODE_ADD; i <= NODE_XOR; i++)
-        GENERATOR[i] = gen_binary;
+        GENERATOR[i] = gen_arithmetic;
 
     GENERATOR[NODE_FUNC_CALL] = gen_func_call;
     GENERATOR[NODE_BLOCK] = gen_block;
@@ -1368,7 +1534,6 @@ void init_generator_tbl()
     GENERATOR[NODE_TYPE_CAST] = gen_type_cast;    
     GENERATOR[NODE_PARAMETER] = gen_parameter;    
 }
-
 
 
 void code_generate(context* ctx, AST root)
