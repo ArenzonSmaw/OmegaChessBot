@@ -564,6 +564,7 @@ void emit_f_div_proc(context* ctx)
     emit_line(ctx, "push ax");
     emit_line(ctx, "mov ax, bx");
     emit_line(ctx, "add ax, dx");
+    emit_line(ctx, "mov dx, 0");
     emit_line(ctx, "div cx");
     emit_line(ctx, "mov bx, ax");
     emit_line(ctx, "pop ax");
@@ -581,6 +582,51 @@ void emit_f_cmpr_proc(context* ctx)
     emit_line(ctx, "ret");
     emit_string(ctx, "f_cmp ENDP\n\n");
 }
+
+void emit_conv_rat_to_float(context* ctx)
+{
+    emit_string(ctx, "_conv_flt PROC\n");
+    emit_line(ctx, "div bx");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "push bx");
+    emit_line(ctx, "mov ax, dx");
+    emit_line(ctx, "mov bx, 100");
+    emit_line(ctx, "mul bx");
+    emit_line(ctx, "pop bx");
+    emit_line(ctx, "xor dx, dx");
+    emit_line(ctx, "div bx");
+    emit_line(ctx, "mov bx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "_conv_flt ENDP\n\n");
+}
+
+void emit_conv_float_to_rat(context* ctx)
+{
+    emit_string(ctx, "_conv_rat PROC\n");
+    emit_line(ctx, "mov cx, 100");
+    emit_line(ctx, "imul cx");
+    emit_line(ctx, "cmp dx, 0");
+    emit_line(ctx, "je _conv_rat_cont");
+    emit_line(ctx, "mov cx, 10");
+    emit_line(ctx, "idiv cx");
+    emit_line(ctx, "mov bx, 10");
+    emit_line(ctx, "push ax");
+    emit_line(ctx, "mov ax, bx");
+    emit_line(ctx, "div cx");
+    emit_line(ctx, "mov dx, ax");
+    emit_line(ctx, "pop ax");
+    emit_line(ctx, "add ax, dx");
+    emit_line(ctx, "mov bx, 10");
+    emit_line(ctx, "jmp _conv_rat_end");
+    emit_string(ctx, "_conv_rat_cont:\n");
+    emit_line(ctx, "add ax, bx");
+    emit_line(ctx, "mov bx, 100");
+    emit_string(ctx, "_conv_rat_end:\n");
+    emit_line(ctx, "ret");
+    emit_string(ctx, "_conv_rat ENDP\n\n");
+}
+
 
 void emit_procedures(context* ctx)
 {
@@ -601,6 +647,9 @@ void emit_procedures(context* ctx)
     emit_f_mul_proc(ctx);
     emit_f_div_proc(ctx);
     emit_f_cmpr_proc(ctx);
+
+    emit_conv_float_to_rat(ctx);
+    emit_conv_rat_to_float(ctx);
 }
 
 
@@ -655,6 +704,7 @@ void emit_scan_bool(context* ctx)
 
 
 void conv_rat_to_float(context*);
+void conv_float_to_rat(context*);
 
 void gen_node(context* ctx, AST node)
 {
@@ -1340,17 +1390,12 @@ static emit_noarg_func BINARY_OP[21] = {
 
 void conv_rat_to_float(context* ctx)
 {
-    emit_line(ctx, "div bx");
-    emit_line(ctx, "push ax");
-    emit_line(ctx, "push bx");
-    emit_line(ctx, "mov ax, dx");
-    emit_line(ctx, "mov bx, 100");
-    emit_line(ctx, "mul bx");
-    emit_line(ctx, "pop bx");
-    emit_line(ctx, "xor dx, dx");
-    emit_line(ctx, "div bx");
-    emit_line(ctx, "mov bx, ax");
-    emit_line(ctx, "pop ax");
+    emit_line(ctx, "call _conv_flt");
+}
+
+void conv_float_to_rat(context* ctx)
+{
+    emit_line(ctx, "call _conv_rat");
 }
 
 void gen_float_arith(context* ctx, AST node)
@@ -1412,15 +1457,15 @@ void gen_type_cast(context* ctx, AST node)
 
     if (from != to)
     {
-        if (to == TYPE_FLOAT)
+        if (to == TYPE_FLOAT && from == TYPE_RATIONAL)
+            conv_rat_to_float(ctx);
+        else if (to == TYPE_FLOAT)
             emit_line(ctx, "mov bx, 0");
+        else if (to == TYPE_RATIONAL && from == TYPE_FLOAT)
+            conv_float_to_rat(ctx);
         else if (to == TYPE_RATIONAL && from != TYPE_FLOAT)
             emit_line(ctx, "mov bx, 1");
-        else if (to == TYPE_RATIONAL && from == TYPE_FLOAT)
-        {
-            emit_line(ctx, "cwd");
-            emit_line(ctx, "idiv bx");
-        }
+
         else if (to == TYPE_CHAR)
             emit_line(ctx, "cbw");
         else if (to == TYPE_BOOL)

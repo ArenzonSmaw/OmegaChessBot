@@ -625,7 +625,7 @@ void arithmetic_handler(semanticer* smt, AST ast)
 
 			ast->type = TYPE_ERROR;
 		}
-		else if (IS_FLT_OR_RAT[left->type] && FLOAT_FRIENDLY[ast->kind])
+		else if (IS_FLT_OR_RAT[left->type] && !FLOAT_FRIENDLY[ast->kind-NODE_ADD])
 		{
 			prod_error(smt, "TYPE ERROR", "illegal operation for floating operands", "\0", ast->line, ast->col);
 
